@@ -1,0 +1,564 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0f172a" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="웹툰 런처" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="apple-touch-icon" href="icon.svg" />
+  <title>웹툰 런처</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --bg2: #020617;
+      --card: #111827;
+      --card2: rgba(17,24,39,0.5);
+      --border: #1e293b;
+      --muted: #64748b;
+      --text: #f1f5f9;
+      --accent: #60a5fa;
+      --accent-dim: rgba(96,165,250,0.15);
+      --accent-border: rgba(96,165,250,0.25);
+      --input: #0b1220;
+      --ok-bg: rgba(6,78,59,0.4);
+      --ok-border: rgba(52,211,153,0.3);
+      --info-bg: rgba(23,37,84,0.4);
+      --info-border: rgba(96,165,250,0.3);
+      --danger: #fb7185;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: linear-gradient(180deg, var(--bg) 0%, var(--bg2) 100%);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      min-height: 100vh;
+      padding: calc(env(safe-area-inset-top) + 16px) 16px calc(env(safe-area-inset-bottom) + 32px);
+    }
+
+    .wrap { max-width: 640px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+
+    /* Header */
+    .header { display: flex; align-items: center; gap: 12px; padding: 4px 0 8px; }
+    .header-icon { width: 40px; height: 40px; border-radius: 12px; background: #111827; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .header-icon img { width: 28px; height: 28px; }
+    .header h1 { font-size: 22px; font-weight: 700; letter-spacing: -0.3px; line-height: 1.2; }
+    .header p { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+    /* Card */
+    .card { background: var(--card2); border: 1px solid var(--border); border-radius: 16px; padding: 16px; backdrop-filter: blur(4px); }
+    .card-title { font-size: 13px; font-weight: 600; margin-bottom: 4px; display: flex; align-items: center; gap: 6px; }
+    .card-desc { font-size: 11px; color: var(--muted); margin-bottom: 12px; }
+
+    /* Inputs */
+    input, textarea {
+      background: var(--input); border: 1px solid var(--border); border-radius: 10px;
+      color: var(--text); font-size: 13px; padding: 10px 12px; width: 100%;
+      outline: none; font-family: inherit; -webkit-appearance: none;
+    }
+    input:focus, textarea:focus { border-color: var(--accent); }
+    input::placeholder, textarea::placeholder { color: var(--muted); }
+    input.mono, .mono { font-family: ui-monospace, monospace; font-size: 12px; }
+    textarea { min-height: 72px; resize: vertical; }
+
+    .field { display: flex; flex-direction: column; gap: 5px; }
+    .field label { font-size: 11px; color: var(--muted); font-weight: 500; }
+    .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .split { display: flex; gap: 8px; }
+    .split input { flex: 1; }
+
+    /* Buttons */
+    button {
+      border: none; border-radius: 10px; cursor: pointer;
+      font-family: inherit; font-size: 13px; font-weight: 500;
+      display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+      transition: opacity .15s, background .15s;
+      -webkit-tap-highlight-color: transparent;
+    }
+    button:active { opacity: 0.75; }
+    .btn-primary { background: var(--accent); color: #0f172a; font-weight: 700; padding: 11px 20px; }
+    .btn-secondary { background: #1e293b; color: var(--text); padding: 10px 14px; border: 1px solid var(--border); }
+    .btn-ghost { background: transparent; color: var(--muted); padding: 10px 14px; }
+    .btn-danger { background: transparent; color: var(--danger); padding: 10px 14px; }
+    .btn-sm { padding: 7px 12px; font-size: 12px; border-radius: 8px; }
+    .btn-file { position: relative; overflow: hidden; }
+    .btn-file input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+
+    /* Launch buttons */
+    .launch-grid { display: grid; grid-template-columns: 1fr 1.3fr 1fr; gap: 8px; margin: 10px 0 6px; }
+    .launch-btn { height: 52px; border-radius: 12px; flex-direction: column; gap: 2px; font-size: 11px; font-weight: 500; border: 1px solid var(--border); }
+    .launch-btn.current { background: var(--accent); color: #0f172a; border-color: var(--accent); font-weight: 700; }
+    .launch-btn.side { background: rgba(17,24,39,0.7); color: var(--muted); }
+    .launch-btn.side:disabled { opacity: 0.3; cursor: not-allowed; }
+    .launch-icon { font-size: 16px; }
+
+    /* Bookmark card */
+    .bm-card { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 14px; transition: border-color .2s; margin-bottom: 10px; }
+    .bm-card:hover { border-color: rgba(96,165,250,0.3); }
+    .bm-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+    .bm-title { font-size: 15px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; }
+    .bm-actions { display: flex; gap: 4px; flex-shrink: 0; }
+    .bm-action { background: transparent; border: none; padding: 6px; border-radius: 8px; color: var(--muted); font-size: 15px; cursor: pointer; }
+    .bm-action:hover { color: var(--text); background: rgba(255,255,255,0.06); }
+    .bm-action.del:hover { color: var(--danger); }
+
+    .badges { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 8px; }
+    .badge { background: rgba(255,255,255,0.06); border: 1px solid var(--border); border-radius: 6px; font-size: 10px; padding: 2px 7px; font-family: ui-monospace, monospace; color: var(--muted); }
+    .badge.ep { background: var(--accent-dim); border-color: var(--accent-border); color: var(--accent); font-weight: 700; font-size: 11px; }
+
+    .bm-domain { font-size: 10px; color: var(--muted); font-family: ui-monospace, monospace; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .bm-memo { font-size: 12px; color: rgba(241,245,249,0.8); background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.07); border-radius: 8px; padding: 8px 10px; margin-bottom: 8px; word-break: break-word; white-space: pre-wrap; }
+
+    /* History */
+    .hist-toggle { background: transparent; border: none; color: var(--muted); font-size: 11px; padding: 2px 0; display: flex; align-items: center; gap: 4px; cursor: pointer; width: 100%; }
+    .hist-toggle:hover { color: var(--text); }
+    .hist-list { margin-top: 6px; display: flex; flex-direction: column; gap: 4px; }
+    .hist-item { display: flex; align-items: center; justify-content: space-between; background: rgba(255,255,255,0.04); border-radius: 6px; padding: 5px 10px; font-size: 10px; font-family: ui-monospace, monospace; text-decoration: none; color: inherit; }
+    .hist-item:hover { background: rgba(255,255,255,0.08); }
+    .hist-ep { color: var(--accent); }
+    .hist-date { color: var(--muted); }
+
+    /* Search */
+    .search-wrap { position: relative; }
+    .search-wrap .search-icon { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--muted); pointer-events: none; font-size: 15px; }
+    .search-wrap input { padding-left: 38px; height: 44px; border-radius: 12px; }
+
+    /* Toast */
+    #toasts { position: fixed; top: calc(env(safe-area-inset-top) + 12px); left: 50%; transform: translateX(-50%); z-index: 999; display: flex; flex-direction: column; gap: 6px; width: calc(100% - 32px); max-width: 400px; pointer-events: none; }
+    .toast { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-radius: 12px; font-size: 13px; font-weight: 500; box-shadow: 0 4px 24px rgba(0,0,0,0.5); animation: toastin .2s ease; backdrop-filter: blur(8px); }
+    .toast.ok { background: var(--ok-bg); border: 1px solid var(--ok-border); color: #6ee7b7; }
+    .toast.info { background: var(--info-bg); border: 1px solid var(--info-border); color: #93c5fd; }
+    @keyframes toastin { from { opacity:0; transform:translateY(-8px); } to { opacity:1; transform:translateY(0); } }
+
+    /* Empty */
+    .empty { text-align: center; padding: 48px 0; color: var(--muted); font-size: 13px; border: 1px dashed var(--border); border-radius: 16px; }
+
+    /* Tools */
+    .tools { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    @media (max-width: 480px) { .tools { grid-template-columns: 1fr; } }
+    .btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
+
+    /* Shortcut */
+    .shortcut-content { display: none; padding-top: 4px; }
+    .shortcut-content.open { display: block; }
+    .code-block { background: rgba(255,255,255,0.05); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; font-family: ui-monospace, monospace; font-size: 11px; color: var(--accent); word-break: break-all; margin: 6px 0; }
+    .info-box { background: var(--info-bg); border: 1px solid var(--info-border); border-radius: 8px; padding: 10px 12px; font-size: 11px; color: #93c5fd; margin-top: 8px; }
+    .steps { font-size: 12px; color: var(--muted); line-height: 1.9; padding-left: 16px; }
+    .steps li { margin-bottom: 2px; }
+    .steps strong { color: var(--text); }
+    .section-title-row { display: flex; align-items: center; justify-content: space-between; cursor: pointer; user-select: none; }
+  </style>
+</head>
+<body>
+<div id="toasts"></div>
+<div class="wrap">
+
+  <!-- Header -->
+  <div class="header">
+    <div class="header-icon">
+      <img src="icon.svg" alt="웹툰 런처" />
+    </div>
+    <div>
+      <h1>웹툰 런처</h1>
+      <p>도메인이 바뀌어도 작품ID로 이어보는 런처</p>
+    </div>
+  </div>
+
+  <!-- Quick URL save -->
+  <div class="card">
+    <div class="card-title">📤 URL 붙여넣기로 저장</div>
+    <div class="card-desc">기존 작품이면 회차를 자동 업데이트, 신규이면 아래 양식에 채워집니다.</div>
+    <div class="split">
+      <input id="shareUrl" class="mono" placeholder="https://사이트.com/webtoons/작품ID/회차ID.html" />
+      <button class="btn-primary btn-sm" onclick="handleShareSave()" style="flex-shrink:0;height:auto;padding:10px 18px;">저장</button>
+    </div>
+  </div>
+
+  <!-- Search -->
+  <div class="search-wrap">
+    <span class="search-icon">🔍</span>
+    <input id="search" placeholder="작품명, 메모, ID 검색" oninput="render()" />
+  </div>
+
+  <!-- Bookmark list -->
+  <div id="list"></div>
+
+  <!-- Add / Edit form -->
+  <div class="card" id="formCard">
+    <div class="card-title" id="formTitle">➕ 새 작품 추가</div>
+    <div style="display:flex;flex-direction:column;gap:12px;margin-top:4px;">
+      <div class="field">
+        <label>웹툰 URL 붙여넣기</label>
+        <div class="split">
+          <input id="urlInput" class="mono" placeholder="https://사이트.com/webtoons/작품ID/회차ID.html" />
+          <button class="btn-secondary btn-sm" onclick="handleParseUrl()" style="flex-shrink:0;">분석</button>
+        </div>
+        <span style="font-size:10px;color:var(--muted)">/카테고리/작품ID/회차ID.html 자동 추출</span>
+      </div>
+      <div class="field"><label>작품명</label><input id="fTitle" placeholder="예: 화산귀환" /></div>
+      <div class="row2">
+        <div class="field"><label>카테고리</label><input id="fCategory" class="mono" placeholder="webtoons" /></div>
+        <div class="field"><label>도메인</label><input id="fDomain" class="mono" placeholder="example.com" /></div>
+      </div>
+      <div class="row2">
+        <div class="field"><label>작품 ID</label><input id="fWorkId" class="mono" inputmode="numeric" placeholder="12345" /></div>
+        <div class="field"><label>회차 ID</label><input id="fEpisodeId" class="mono" inputmode="numeric" placeholder="89" /></div>
+      </div>
+      <div class="field"><label>메모</label><textarea id="fMemo" placeholder="예: 여기까지 봄, 다음에 이어보기"></textarea></div>
+      <div class="btn-row">
+        <button class="btn-primary" id="saveBtn" onclick="handleSave()">저장</button>
+        <button class="btn-ghost" onclick="resetForm()">초기화</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tools -->
+  <div class="tools">
+    <div class="card">
+      <div class="card-title">🔄 새 도메인 일괄 적용</div>
+      <div class="card-desc">저장된 모든 작품의 도메인을 바꿉니다.</div>
+      <div class="split">
+        <input id="bulkDomain" class="mono" placeholder="newsite.com" style="height:40px;" />
+        <button class="btn-primary btn-sm" onclick="handleBulkDomain()" style="flex-shrink:0;">적용</button>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">💾 데이터 관리</div>
+      <div class="card-desc">기기 간 이동이나 백업에 사용하세요.</div>
+      <div class="btn-row">
+        <button class="btn-secondary btn-sm" onclick="handleBackup()">⬇ JSON 백업</button>
+        <button class="btn-secondary btn-sm btn-file">
+          ⬆ 복원
+          <input type="file" accept="application/json" onchange="handleRestore(event)" />
+        </button>
+        <button class="btn-danger btn-sm" onclick="handleClearAll()">전체 삭제</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- iPhone shortcut -->
+  <div class="card">
+    <div class="section-title-row" onclick="toggleShortcut()">
+      <div>
+        <div class="card-title" style="margin-bottom:0">📱 iPhone 단축어로 자동 저장하기</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:3px;">Safari 공유 버튼 한 번으로 현재 회차를 자동 기록</div>
+      </div>
+      <span id="shortcutArrow" style="color:var(--muted);font-size:14px;padding-left:12px;">▼</span>
+    </div>
+    <div class="shortcut-content" id="shortcutContent">
+      <div style="margin-top:12px;display:flex;flex-direction:column;gap:10px;">
+        <div style="font-size:12px;font-weight:600;color:var(--text);">단축어 동작 원리</div>
+        <p style="font-size:12px;color:var(--muted);">Safari에서 웹툰 페이지를 열고 공유 버튼을 누르면, 단축어가 현재 URL을 아래 주소로 보냅니다.</p>
+        <div class="code-block" id="shortcutUrl">이 파일을 웹서버에서 열면 주소가 표시됩니다</div>
+        <div style="font-size:12px;font-weight:600;color:var(--text);">설정 방법</div>
+        <ol class="steps">
+          <li>iPhone <strong>단축어</strong> 앱 열기 → 오른쪽 상단 <strong>+</strong></li>
+          <li><strong>동작 추가</strong> → Safari에서 열기 선택</li>
+          <li>URL 입력란에 위 주소 복사 후 뒤에 <strong>단축어 입력</strong> 변수 추가</li>
+          <li>단축어 이름을 <strong>웹툰 기록</strong>으로 저장</li>
+          <li>Safari 공유 시트에서 이 단축어를 탭하면 자동 저장</li>
+        </ol>
+        <div class="info-box">기존 작품이면 회차만 업데이트되고, 신규 작품이면 양식에 자동으로 채워집니다.</div>
+        <button class="btn-secondary btn-sm" style="align-self:flex-start;" onclick="copyShortcutUrl()">단축어 URL 복사</button>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /wrap -->
+
+<script>
+const KEY = 'webtoon_bookmarks_v1';
+let data = [];
+let editingId = null;
+let expandedHistory = new Set();
+let toastCounter = 0;
+
+function load() {
+  try { data = JSON.parse(localStorage.getItem(KEY) || '[]').map(b => ({ ...b, history: b.history || [] })); }
+  catch { data = []; }
+}
+function persist() { localStorage.setItem(KEY, JSON.stringify(data)); }
+
+function makeUrl(domain, category, workId, episodeId) {
+  return `https://${domain}/${category}/${workId}/${episodeId}.html`;
+}
+function parseWebtoonUrl(raw) {
+  try {
+    const url = new URL(raw.trim());
+    const p = url.pathname.split('/').filter(Boolean);
+    const cat = p[0] || '', work = p[1] || '', ep = (p[2] || '').replace(/\.html?$/, '');
+    if (!cat || !work || !ep) return null;
+    return { domain: url.host, category: cat, workId: work, episodeId: ep };
+  } catch { return null; }
+}
+function normDomain(v) { return (v||'').trim().replace(/^https?:\/\//,'').replace(/\/.*$/,''); }
+
+function upsertHistory(history, entry) {
+  const idx = history.findIndex(h => h.episodeId === entry.episodeId);
+  if (idx === -1) return [...history, entry];
+  const copy = [...history];
+  copy[idx] = { ...copy[idx], viewedAt: entry.viewedAt };
+  return copy;
+}
+
+function toast(msg, type = 'ok') {
+  const el = document.createElement('div');
+  el.className = `toast ${type}`;
+  el.innerHTML = `<span>${type==='ok'?'✓':'ℹ'}</span><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(msg)}</span>`;
+  document.getElementById('toasts').appendChild(el);
+  setTimeout(() => el.remove(), 3000);
+}
+
+function handleShareSave() {
+  const raw = document.getElementById('shareUrl').value.trim();
+  const parsed = parseWebtoonUrl(raw);
+  if (!parsed) { alert('URL 형식을 확인해주세요.'); return; }
+  const existing = data.find(b => b.category === parsed.category && b.workId === parsed.workId);
+  if (existing) {
+    const now = new Date().toISOString();
+    const url = makeUrl(parsed.domain, parsed.category, parsed.workId, parsed.episodeId);
+    existing.episodeId = parsed.episodeId; existing.domain = parsed.domain; existing.updatedAt = now;
+    existing.history = upsertHistory(existing.history, { episodeId: parsed.episodeId, url, viewedAt: now });
+    persist(); render(); toast(`"${existing.title}" 회차 ${parsed.episodeId}로 업데이트됨`);
+  } else {
+    document.getElementById('fCategory').value = parsed.category;
+    document.getElementById('fWorkId').value = parsed.workId;
+    document.getElementById('fEpisodeId').value = parsed.episodeId;
+    document.getElementById('fDomain').value = parsed.domain;
+    document.getElementById('urlInput').value = raw;
+    toast('새 작품 — 작품명을 입력하고 저장해주세요.', 'info');
+    document.getElementById('formCard').scrollIntoView({ behavior: 'smooth' });
+  }
+  document.getElementById('shareUrl').value = '';
+}
+
+function handleParseUrl() {
+  const parsed = parseWebtoonUrl(document.getElementById('urlInput').value);
+  if (!parsed) { alert('URL 형식을 확인해주세요.'); return; }
+  document.getElementById('fDomain').value = parsed.domain;
+  document.getElementById('fCategory').value = parsed.category;
+  document.getElementById('fWorkId').value = parsed.workId;
+  document.getElementById('fEpisodeId').value = parsed.episodeId;
+}
+
+function handleSave() {
+  const title = document.getElementById('fTitle').value.trim();
+  const domain = normDomain(document.getElementById('fDomain').value);
+  const category = document.getElementById('fCategory').value.trim();
+  const workId = document.getElementById('fWorkId').value.trim();
+  const episodeId = document.getElementById('fEpisodeId').value.trim();
+  const memo = document.getElementById('fMemo').value.trim();
+  if (!title || !domain || !category || !workId || !episodeId) {
+    alert('작품명, 도메인, 카테고리, 작품ID, 회차ID를 입력해주세요.'); return;
+  }
+  const now = new Date().toISOString();
+  if (editingId) {
+    const b = data.find(x => x.id === editingId);
+    if (b) Object.assign(b, { title, domain, category, workId, episodeId, memo, updatedAt: now });
+    toast('수정 완료');
+  } else {
+    const url = makeUrl(domain, category, workId, episodeId);
+    data.unshift({ id: Date.now().toString(36), title, domain, category, workId, episodeId, memo, updatedAt: now, history: [{ episodeId, url, viewedAt: now }] });
+    toast(`"${title}" 저장됨`);
+  }
+  persist(); resetForm(); render();
+}
+
+function resetForm() {
+  editingId = null;
+  ['urlInput','fTitle','fCategory','fDomain','fWorkId','fEpisodeId','fMemo'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('formTitle').textContent = '➕ 새 작품 추가';
+  document.getElementById('saveBtn').textContent = '저장';
+}
+
+function handleEdit(id) {
+  const b = data.find(x => x.id === id); if (!b) return;
+  editingId = id;
+  document.getElementById('urlInput').value = makeUrl(b.domain, b.category, b.workId, b.episodeId);
+  document.getElementById('fTitle').value = b.title;
+  document.getElementById('fCategory').value = b.category;
+  document.getElementById('fDomain').value = b.domain;
+  document.getElementById('fWorkId').value = b.workId;
+  document.getElementById('fEpisodeId').value = b.episodeId;
+  document.getElementById('fMemo').value = b.memo || '';
+  document.getElementById('formTitle').textContent = '✏️ 작품 수정';
+  document.getElementById('saveBtn').textContent = '수정 완료';
+  document.getElementById('formCard').scrollIntoView({ behavior: 'smooth' });
+}
+
+function handleDelete(id) {
+  const b = data.find(x => x.id === id);
+  if (!b || !confirm(`"${b.title}"을 삭제할까요?`)) return;
+  data = data.filter(x => x.id !== id);
+  persist(); render();
+}
+
+function handleLaunch(action, id) {
+  const b = data.find(x => x.id === id); if (!b) return;
+  const now = new Date().toISOString();
+  let ep = b.episodeId;
+  if (action === 'next') { const n = parseInt(ep,10); if (!isNaN(n)) ep = String(n+1); }
+  if (action === 'prev') { const n = parseInt(ep,10); if (!isNaN(n) && n > 1) ep = String(n-1); else return; }
+  const url = makeUrl(b.domain, b.category, b.workId, ep);
+  b.episodeId = ep; b.updatedAt = now;
+  b.history = upsertHistory(b.history, { episodeId: ep, url, viewedAt: now });
+  persist(); render();
+  window.open(url, '_blank', 'noopener,noreferrer');
+  const label = action === 'current' ? `${ep}화 읽기 시작` : `${ep}화로 이동`;
+  toast(`"${b.title}" — ${label}`);
+}
+
+function handleBulkDomain() {
+  const d = normDomain(document.getElementById('bulkDomain').value);
+  if (!d) { alert('새 도메인을 입력해주세요.'); return; }
+  if (!confirm('모든 저장 항목의 도메인을 바꿀까요?')) return;
+  const now = new Date().toISOString();
+  data = data.map(b => ({ ...b, domain: d, updatedAt: now }));
+  persist(); render(); document.getElementById('bulkDomain').value = '';
+  toast('도메인 일괄 변경 완료');
+}
+
+function handleBackup() {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = 'webtoon-bookmarks.json'; a.click();
+}
+
+function handleRestore(e) {
+  const f = e.target.files[0]; if (!f) return;
+  const r = new FileReader();
+  r.onload = () => {
+    try {
+      const arr = JSON.parse(r.result);
+      if (!Array.isArray(arr)) throw 0;
+      const merge = confirm('기존 기록에 합칠까요? 취소를 누르면 덮어씌워집니다.');
+      const migrated = arr.map(b => ({ ...b, history: b.history || [] }));
+      data = merge ? [...migrated, ...data.filter(p => !migrated.some(i => i.id === p.id))] : migrated;
+      persist(); render(); toast('복원 완료');
+    } catch { alert('JSON 파일을 확인해주세요.'); }
+  };
+  r.readAsText(f); e.target.value = '';
+}
+
+function handleClearAll() {
+  if (!confirm('정말로 모든 북마크를 삭제하시겠습니까?')) return;
+  data = []; persist(); render(); toast('전체 삭제됨', 'info');
+}
+
+function toggleHistory(id) {
+  expandedHistory.has(id) ? expandedHistory.delete(id) : expandedHistory.add(id);
+  render();
+}
+
+function toggleShortcut() {
+  const content = document.getElementById('shortcutContent');
+  const arrow = document.getElementById('shortcutArrow');
+  content.classList.toggle('open');
+  arrow.textContent = content.classList.contains('open') ? '▲' : '▼';
+}
+
+function copyShortcutUrl() {
+  const url = `${location.origin}${location.pathname}?url=`;
+  navigator.clipboard?.writeText(url)
+    .then(() => toast('URL 복사됨'))
+    .catch(() => toast('클립보드 복사 실패', 'info'));
+}
+
+function esc(s) { return String(s||'').replace(/[&<>"]/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])); }
+
+function render() {
+  const q = document.getElementById('search').value.toLowerCase();
+  const filtered = data
+    .filter(b => (b.title+b.memo+b.workId+b.episodeId+b.category).toLowerCase().includes(q))
+    .sort((a,b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+
+  const list = document.getElementById('list');
+  if (!filtered.length) {
+    list.innerHTML = `<div class="empty"><div style="font-size:32px;margin-bottom:10px">📚</div>${data.length===0 ? '아직 저장된 작품이 없어요.<br>위에서 추가해보세요!' : '검색 결과가 없습니다.'}</div>`;
+    return;
+  }
+
+  list.innerHTML = filtered.map(b => {
+    const epNum = parseInt(b.episodeId, 10);
+    const canPrev = !isNaN(epNum) && epNum > 1;
+    const recentHist = [...(b.history||[])].sort((a,c) => new Date(c.viewedAt)-new Date(a.viewedAt)).slice(0,5);
+    const histOpen = expandedHistory.has(b.id);
+    return `<div class="bm-card">
+  <div class="bm-top">
+    <div class="bm-title">${esc(b.title)}</div>
+    <div class="bm-actions">
+      <button class="bm-action" onclick="handleEdit('${esc(b.id)}')">✏️</button>
+      <button class="bm-action del" onclick="handleDelete('${esc(b.id)}')">🗑️</button>
+    </div>
+  </div>
+  <div class="badges">
+    <span class="badge">${esc(b.category)}</span>
+    <span class="badge">작품 ${esc(b.workId)}</span>
+    <span class="badge ep">${esc(b.episodeId)}화</span>
+  </div>
+  <div class="bm-domain">${esc(b.domain)}</div>
+  ${b.memo ? `<div class="bm-memo">${esc(b.memo)}</div>` : ''}
+  <div class="launch-grid">
+    <button class="launch-btn side" onclick="handleLaunch('prev','${esc(b.id)}')" ${canPrev?'':'disabled'}>
+      <span class="launch-icon">⏮</span>이전화
+    </button>
+    <button class="launch-btn current" onclick="handleLaunch('current','${esc(b.id)}')">
+      <span class="launch-icon">📖</span>현재화 읽기
+    </button>
+    <button class="launch-btn side" onclick="handleLaunch('next','${esc(b.id)}')">
+      <span class="launch-icon">⏭</span>다음화
+    </button>
+  </div>
+  ${recentHist.length ? `
+  <button class="hist-toggle" onclick="toggleHistory('${esc(b.id)}')">
+    🕐 최근: ${recentHist.slice(0,5).map(h=>`${esc(h.episodeId)}화`).join(', ')}
+    <span style="margin-left:auto">${histOpen?'▲':'▼'}</span>
+  </button>
+  ${histOpen ? `<div class="hist-list">${recentHist.map(h=>`
+    <a class="hist-item" href="${esc(h.url)}" target="_blank" rel="noopener noreferrer">
+      <span class="hist-ep">${esc(h.episodeId)}화</span>
+      <span class="hist-date">${new Date(h.viewedAt).toLocaleDateString('ko-KR')}</span>
+    </a>`).join('')}</div>` : ''}` : ''}
+</div>`;
+  }).join('');
+}
+
+/* URL param */
+function handleUrlParam() {
+  const params = new URLSearchParams(location.search);
+  const raw = params.get('url'); if (!raw) return;
+  history.replaceState({}, '', location.pathname);
+  const parsed = parseWebtoonUrl(decodeURIComponent(raw)); if (!parsed) return;
+  const existing = data.find(b => b.category === parsed.category && b.workId === parsed.workId);
+  if (existing) {
+    const now = new Date().toISOString();
+    const url = makeUrl(parsed.domain, parsed.category, parsed.workId, parsed.episodeId);
+    existing.episodeId = parsed.episodeId; existing.domain = parsed.domain; existing.updatedAt = now;
+    existing.history = upsertHistory(existing.history, { episodeId: parsed.episodeId, url, viewedAt: now });
+    persist(); render(); toast(`"${existing.title}" 회차 ${parsed.episodeId}로 자동 업데이트됨`);
+  } else {
+    document.getElementById('fCategory').value = parsed.category;
+    document.getElementById('fWorkId').value = parsed.workId;
+    document.getElementById('fEpisodeId').value = parsed.episodeId;
+    document.getElementById('fDomain').value = parsed.domain;
+    document.getElementById('urlInput').value = decodeURIComponent(raw);
+    toast('URL에서 정보를 불러왔어요. 작품명을 입력하고 저장해주세요.', 'info');
+    setTimeout(() => document.getElementById('formCard').scrollIntoView({ behavior: 'smooth' }), 100);
+  }
+}
+
+/* Init */
+load();
+handleUrlParam();
+render();
+document.getElementById('shortcutUrl').textContent = `${location.origin}${location.pathname}?url=[현재 URL]`;
+
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('service-worker.js').catch(() => {});
+}
+</script>
+</body>
+</html>
