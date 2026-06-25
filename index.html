@@ -232,10 +232,15 @@
     </div>
   </div>
 
-  <!-- Clipboard button -->
-  <button class="clip-btn" onclick="handleClipboard()">
-    📋 클립보드 링크 추가
-  </button>
+  <!-- Main clipboard button -->
+  <div style="margin-bottom:6px">
+    <button class="clip-btn" onclick="handleClipboard()" style="-webkit-tap-highlight-color:transparent">
+      📋 복사한 웹툰 추가
+    </button>
+    <p style="text-align:center;font-size:12px;color:var(--muted);margin:6px 0 0;line-height:1.5;">
+      웹툰 페이지 주소를 복사한 뒤 이 버튼을 눌러 저장하세요.
+    </p>
+  </div>
 
   <!-- Search -->
   <div class="search-wrap">
@@ -425,106 +430,44 @@ function toast(msg, type='ok') {
   setTimeout(()=>el.remove(), 3200);
 }
 
-/* ── Clipboard detect ────────────────────────────────────── */
-const IGNORED_CLIP_KEY = 'webtoon_ignored_clipboard_url';
-let _clipParsed = null, _clipRaw = '';
-
-async function initClipboardDetect() {
-  try {
-    const text = await navigator.clipboard.readText();
-    if (!text) return;
-    const raw = text.trim();
-    const parsed = parseWebtoonUrl(raw);
-    if (!parsed) return;
-    const ignored = localStorage.getItem(IGNORED_CLIP_KEY);
-    if (ignored === raw) return;
-    const existing = data.find(b => b.workId === parsed.workId);
-    if (existing && existing.episodeId === parsed.episodeId &&
-        existing.history.some(h => h.episodeId === parsed.episodeId)) {
-      showClipAlready();
-      return;
-    }
-    _clipParsed = parsed; _clipRaw = raw;
-    showClipConfirm(parsed);
-  } catch {
-    /* 권한 없음 or 실패 → 조용히 무시 */
-  }
-}
-
-function showClipConfirm(parsed) {
-  document.getElementById('clipModal').innerHTML = `
-    <div class="clip-body">
-      <div class="clip-icon">📋</div>
-      <div class="clip-title">복사한 웹툰 링크를 추가할까요?</div>
-      <div class="clip-sub">${esc(parsed.domain)} · ${esc(parsed.workId)} · ${esc(parsed.episodeId)}화</div>
-    </div>
-    <div class="clip-actions">
-      <button class="clip-ignore" onclick="clipIgnore()">무시</button>
-      <button class="clip-confirm" onclick="clipConfirm()">추가</button>
-    </div>`;
-  document.getElementById('clipOverlay').style.display = 'flex';
-}
-
-function showClipAlready() {
-  document.getElementById('clipModal').innerHTML = `
-    <div class="clip-already">
-      <span style="font-size:22px">✓</span>
-      <div>
-        <div style="font-size:14px;font-weight:700;">이미 저장된 회차예요</div>
-        <div style="font-size:12px;color:var(--muted);margin-top:3px;">클립보드의 링크가 이미 기록에 있습니다.</div>
-      </div>
-    </div>`;
-  document.getElementById('clipOverlay').style.display = 'flex';
-  setTimeout(closeClipPopup, 2500);
-}
-
-function clipConfirm() {
-  if (!_clipParsed) return;
-  autoSave(_clipParsed);
-  closeClipPopup();
-}
-
-function clipIgnore() {
-  if (_clipRaw) localStorage.setItem(IGNORED_CLIP_KEY, _clipRaw);
-  closeClipPopup();
-}
-
-function closeClipPopup() {
-  document.getElementById('clipOverlay').style.display = 'none';
-  _clipParsed = null; _clipRaw = '';
-}
-
-/* ── Clipboard manual button ─────────────────────────────── */
+/* ── Clipboard button (버튼 클릭 시에만 실행 — iPhone Safari 대응) ── */
 async function handleClipboard() {
+  let text = '';
   try {
-    const text = await navigator.clipboard.readText();
-    const parsed = parseWebtoonUrl(text);
-    if (!parsed) { toast('클립보드에 유효한 웹툰 URL이 없어요', 'err'); return; }
-    autoSave(parsed);
+    text = await navigator.clipboard.readText();
   } catch {
-    toast('클립보드 접근 실패 — URL을 아래 입력칸에 붙여넣어 주세요', 'err');
+    toast('Safari에서는 버튼을 한 번 더 눌러야 할 수 있어요.', 'info');
     openForm();
+    return;
   }
+  const raw = text.trim();
+  if (!raw) { toast('복사된 링크가 없어요.', 'err'); return; }
+  const parsed = parseWebtoonUrl(raw);
+  if (!parsed) { toast('웹툰 링크 형식이 아니에요.', 'err'); return; }
+  autoSave(parsed);
 }
+/* 공통 저장 — 기존 작품 title 절대 덮어쓰지 않음 */
 function autoSave(parsed) {
   const existing = data.find(b => b.workId === parsed.workId);
   if (existing) {
     const now = new Date().toISOString();
-    const url = makeUrl(parsed.domain, parsed.category, parsed.workId, parsed.episodeId);
+    const url = makeUrl(parsed.domain, existing.category, parsed.workId, parsed.episodeId);
     existing.episodeId = parsed.episodeId; existing.domain = parsed.domain; existing.updatedAt = now;
     existing.history = upsertHist(existing.history, {episodeId: parsed.episodeId, url, viewedAt: now});
     persist(); render();
-    toast(`"${existing.title}" ${parsed.episodeId}화로 업데이트됨`);
+    toast(`복사한 웹툰을 저장했어요. (${existing.title} · ${parsed.episodeId}화)`);
   } else {
-    const title = autoTitle(parsed.category, parsed.workId);
+    const title = autoTitle('webtoons', parsed.workId);
     const now = new Date().toISOString();
-    const url = makeUrl(parsed.domain, parsed.category, parsed.workId, parsed.episodeId);
-    data.unshift({ id: Date.now().toString(36), title, category: parsed.category, domain: parsed.domain, workId: parsed.workId, episodeId: parsed.episodeId, memo: '', updatedAt: now, history: [{episodeId: parsed.episodeId, url, viewedAt: now}], favorite: false, abbr: '', coverUrl: '' });
-    if (parsed.domain) localStorage.setItem(DOM_KEY, parsed.domain);
+    const url = makeUrl(parsed.domain, 'webtoons', parsed.workId, parsed.episodeId);
+    data.unshift({ id: Date.now().toString(36), title, category: 'webtoons', domain: parsed.domain, workId: parsed.workId, episodeId: parsed.episodeId, memo: '', updatedAt: now, history: [{episodeId: parsed.episodeId, url, viewedAt: now}], favorite: false, abbr: '', coverUrl: '' });
     persist(); render();
-    toast(`클립보드 링크 저장 완료: "${title}"`);
+    toast(`복사한 웹툰을 저장했어요. (${title})`);
   }
-  if (parsed.domain) document.getElementById('defaultDomainInput').value = parsed.domain;
+  if (parsed.domain) {
+    localStorage.setItem(DOM_KEY, parsed.domain);
+    document.getElementById('defaultDomainInput').value = parsed.domain;
+  }
 }
 
 /* ── URL param ──────────────────────────────────────────── */
@@ -788,18 +731,6 @@ handleUrlParam();
 render();
 document.getElementById('shortcutUrl').textContent = `${location.origin}${location.pathname}?url=[현재 URL]`;
 document.getElementById('defaultDomainInput').value = getDefaultDomain();
-
-// 클립보드 자동 감지 (앱 열릴 때 한 번만)
-initClipboardDetect();
-
-// 다른 탭(웹툰 읽기)에서 돌아올 때 재감지
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible') {
-    // 팝업이 이미 열려 있으면 건너뜀
-    if (document.getElementById('clipOverlay').style.display !== 'none') return;
-    initClipboardDetect();
-  }
-});
 
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('service-worker.js').catch(()=>{});
