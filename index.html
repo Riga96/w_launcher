@@ -792,6 +792,15 @@ document.getElementById('defaultDomainInput').value = getDefaultDomain();
 // 클립보드 자동 감지 (앱 열릴 때 한 번만)
 initClipboardDetect();
 
+// 다른 탭(웹툰 읽기)에서 돌아올 때 재감지
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') {
+    // 팝업이 이미 열려 있으면 건너뜀
+    if (document.getElementById('clipOverlay').style.display !== 'none') return;
+    initClipboardDetect();
+  }
+});
+
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('service-worker.js').catch(()=>{});
 }
