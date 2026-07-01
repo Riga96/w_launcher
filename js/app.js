@@ -20,7 +20,7 @@ import {
   parseShortcutClipboardJson,
   parseShortcutPageTitle,
   isValidNickname,
-} from './parser.js?v=2.1.2';
+} from './parser.js?v=2.1.3';
 import {
   loadBookmarks,
   saveBookmarks,
@@ -31,11 +31,11 @@ import {
   parseImportJson,
   initSettings,
   setCurrentSiteNumber,
-} from './storage.js?v=2.1.2';
-import { openSaved, openInNewTab } from './launcher.js?v=2.1.2';
-import { findWorkingSiteNumber } from './site-finder.js?v=2.1.2';
-import { APP_VERSION, APP_VERSION_LABEL } from './version.js?v=2.1.2';
-import { checkForUpdate, applyUpdate, showUpdateBanner } from './updater.js?v=2.1.2';
+} from './storage.js?v=2.1.3';
+import { openSaved, openInNewTab } from './launcher.js?v=2.1.3';
+import { findWorkingSiteNumber } from './site-finder.js?v=2.1.3';
+import { APP_VERSION, APP_VERSION_LABEL } from './version.js?v=2.1.3';
+import { checkForUpdate, applyUpdate, showUpdateBanner } from './updater.js?v=2.1.3';
 import {
   toast,
   renderList,
@@ -58,7 +58,7 @@ import {
   clearRenderCache,
   focusPasteInput,
   setPasteImportActive,
-} from './ui.js?v=2.1.2';
+} from './ui.js?v=2.1.3';
 
 /** @type {Array} In-memory bookmark store */
 let data = [];
@@ -392,10 +392,14 @@ async function readClipboardText() {
     if (navigator.clipboard?.read) {
       const items = await navigator.clipboard.read();
       for (const item of items) {
-        for (const type of ['text/plain', 'text/uri-list']) {
-          if (!item.types.includes(type)) continue;
-          const blob = await item.getType(type);
-          const text = await blob.text();
+        if (item.types.includes('text/plain')) {
+          const text = await (await item.getType('text/plain')).text();
+          if (text?.trim()) return text;
+        }
+      }
+      for (const item of items) {
+        if (item.types.includes('text/uri-list')) {
+          const text = await (await item.getType('text/uri-list')).text();
           const line = text.split('\n').find((row) => row.trim().startsWith('http'));
           if (line?.trim()) return line.trim();
         }
@@ -409,13 +413,30 @@ async function readClipboardText() {
 }
 
 /**
+ * Try importing clipboard text immediately (best on user tap).
+ * @returns {Promise<boolean>} whether import succeeded
+ */
+async function tryImportFromClipboard() {
+  const text = (await readClipboardText()).trim();
+  if (!text) return false;
+
+  const result = saveFromUrlText(text);
+  return result.status !== 'invalid' && result.status !== 'empty';
+}
+
+/**
  * Arm pasteUrl so the next paste auto-saves (iPhone fallback).
  */
 function armPasteImport() {
   pasteImportArmed = true;
   setPasteImportActive(true);
+  const input = document.getElementById('pasteUrl');
+  if (input) {
+    input.value = '';
+    input.focus();
+  }
   focusPasteInput();
-  toast('붙여넣기를 한 번 눌러주세요', 'info');
+  toast('입력란에 붙여넣기를 눌러주세요', 'info');
 }
 
 /**
@@ -432,21 +453,40 @@ function disarmPasteImport() {
 async function handleClipboardImport() {
   disarmPasteImport();
 
-  let text = '';
   if (clipboardPrefetch) {
-    text = (await clipboardPrefetch).trim();
+    const prefetched = (await clipboardPrefetch).trim();
     clipboardPrefetch = null;
-  }
-  if (!text) {
-    text = (await readClipboardText()).trim();
+    if (prefetched) {
+      const result = saveFromUrlText(prefetched);
+      if (result.status !== 'invalid' && result.status !== 'empty') return;
+    }
   }
 
-  if (text) {
-    saveFromUrlText(text);
-    return;
-  }
+  if (await tryImportFromClipboard()) return;
+
+  // Retry while the user-gesture window may still be open (iOS PWA).
+  await new Promise((resolve) => requestAnimationFrame(resolve));
+  if (await tryImportFromClipboard()) return;
 
   armPasteImport();
+}
+
+/**
+ * Complete armed paste import from pasteUrl input.
+ * @param {HTMLInputElement} input
+ */
+function finishArmedPasteImport(input) {
+  if (!pasteImportArmed) return;
+  const raw = input.value.trim();
+  if (!raw) return;
+  if (!raw.startsWith('http') && !raw.startsWith('{')) return;
+
+  const result = saveFromUrlText(raw);
+  if (result.status !== 'invalid' && result.status !== 'empty') {
+    clearPasteUrlInput();
+    disarmPasteImport();
+    input.blur();
+  }
 }
 
 /**
@@ -478,17 +518,13 @@ function setupWebtoonImportUi() {
     }
 
     window.setTimeout(() => {
-      if (!pasteImportArmed) return;
-      const raw = input.value.trim();
-      if (!raw) return;
-
-      const result = saveFromUrlText(raw, { promptEpisode: true });
-      if (result.status !== 'invalid' && result.status !== 'empty') {
-        clearPasteUrlInput();
-        disarmPasteImport();
-        input.blur();
-      }
+      finishArmedPasteImport(input);
     }, 0);
+  });
+
+  input.addEventListener('input', () => {
+    if (!pasteImportArmed) return;
+    finishArmedPasteImport(input);
   });
 
   input.addEventListener('blur', () => {
@@ -821,7 +857,7 @@ function toggleAdvanced() {
  * Copy the shortcut URL template to clipboard.
  */
 function copyShortcutUrl() {
-  copyToClipboard(`${location.origin}${location.pathname}?url=`);
+  copyToClipboard(`${location.origin}${location.pathname}?wdata=`);
 }
 
 /**
@@ -843,6 +879,14 @@ function extractLaunchUrl(params) {
  */
 function handleUrlParam() {
   const params = new URLSearchParams(location.search);
+
+  const wdata = params.get('wdata');
+  if (wdata?.trim()) {
+    history.replaceState({}, '', location.pathname);
+    saveFromUrlText(decodeParam(wdata));
+    return;
+  }
+
   const wurl = params.get('wurl');
 
   if (wurl?.trim()) {
@@ -855,10 +899,7 @@ function handleUrlParam() {
   }
 
   const raw = extractLaunchUrl(params);
-  if (!raw) {
-    handleClipboardImport();
-    return;
-  }
+  if (!raw) return;
 
   history.replaceState({}, '', location.pathname);
   saveFromUrlText(decodeParam(raw));
@@ -904,7 +945,7 @@ function init() {
   handleUrlParam();
   render();
 
-  setShortcutUrlText(`${location.origin}${location.pathname}?wurl=[현재 URL]&wtitle=[페이지 제목]`);
+  setShortcutUrlText(`${location.origin}${location.pathname}?wdata=[Shortcut JSON]`);
 
   const footer = document.querySelector('.app-footer');
   if (footer) footer.textContent = APP_VERSION_LABEL;
