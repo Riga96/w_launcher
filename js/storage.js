@@ -9,7 +9,7 @@ import {
   buildPath,
   extractSiteNumber,
   normDomain,
-} from './parser.js';
+} from './parser.js?v=2.0.6';
 
 /** @type {string} Unchanged storage key — do not rename. */
 export const STORAGE_KEY = 'webtoon_bookmarks_v1';
@@ -54,21 +54,25 @@ export function migrateBookmark(bookmark) {
     migrated.updatedAt = new Date().toISOString();
   }
 
-  // Clear displayEpisode if it was copied from internal episodeId (legacy data).
-  const displayEpisode = migrated.displayEpisode == null
-    ? ''
-    : String(migrated.displayEpisode).trim();
-  const episodeId = String(migrated.episodeId || '').trim();
-  if (
-    !displayEpisode
-    || (episodeId && (displayEpisode === episodeId || displayEpisode === `${episodeId}화`))
-  ) {
-    migrated.displayEpisode = '';
-  } else {
-    migrated.displayEpisode = displayEpisode;
-  }
+  // Clear displayEpisode if it looks like an internal URL episode ID.
+  migrated.displayEpisode = normalizeDisplayEpisode(migrated.displayEpisode, migrated.episodeId);
 
   return migrated;
+}
+
+/**
+ * Normalize displayEpisode before saving to localStorage.
+ * @param {string} value
+ * @param {string} episodeId
+ * @returns {string}
+ */
+function normalizeDisplayEpisode(value, episodeId) {
+  const trimmed = String(value ?? '').trim();
+  const id = String(episodeId || '').trim();
+  if (!trimmed) return '';
+  if (id && (trimmed === id || trimmed === `${id}화`)) return '';
+  if (/^\d{6,}화?$/.test(trimmed)) return '';
+  return trimmed;
 }
 
 /**
@@ -89,11 +93,8 @@ function bookmarkNeedsMigration(bookmark) {
   if (!bookmark.updatedAt) return true;
   if (!bookmark.path && bookmark.workId && bookmark.episodeId) return true;
   if (bookmark.displayEpisode === undefined || bookmark.displayEpisode === null) return true;
-  const displayEpisode = String(bookmark.displayEpisode || '').trim();
-  const episodeId = String(bookmark.episodeId || '').trim();
-  if (episodeId && (displayEpisode === episodeId || displayEpisode === `${episodeId}화`)) {
-    return true;
-  }
+  const sanitized = normalizeDisplayEpisode(bookmark.displayEpisode, bookmark.episodeId);
+  if (sanitized !== String(bookmark.displayEpisode ?? '').trim()) return true;
   return Object.keys(BOOKMARK_DEFAULTS).some(
     (key) => bookmark[key] === undefined || bookmark[key] === null
   );
@@ -171,7 +172,7 @@ export function loadBookmarks() {
     if (!Array.isArray(parsed)) return [];
     const migrated = migrateAll(parsed);
 
-    if (parsed.some(bookmarkNeedsMigration)) {
+    if (JSON.stringify(migrated) !== JSON.stringify(parsed)) {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated));
     }
 

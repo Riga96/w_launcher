@@ -16,7 +16,7 @@ import {
   findBookmarkByWork,
   defaultWorkTitle,
   isValidNickname,
-} from './parser.js';
+} from './parser.js?v=2.0.6';
 import {
   loadBookmarks,
   saveBookmarks,
@@ -27,11 +27,11 @@ import {
   parseImportJson,
   initSettings,
   setCurrentSiteNumber,
-} from './storage.js';
-import { openSaved, openInNewTab } from './launcher.js';
-import { findWorkingSiteNumber } from './site-finder.js';
-import { APP_VERSION, APP_VERSION_LABEL } from './version.js';
-import { checkForUpdate, applyUpdate, showUpdateBanner } from './updater.js';
+} from './storage.js?v=2.0.6';
+import { openSaved, openInNewTab } from './launcher.js?v=2.0.6';
+import { findWorkingSiteNumber } from './site-finder.js?v=2.0.6';
+import { APP_VERSION, APP_VERSION_LABEL } from './version.js?v=2.0.6';
+import { checkForUpdate, applyUpdate, showUpdateBanner } from './updater.js?v=2.0.6';
 import {
   toast,
   renderList,
@@ -50,7 +50,9 @@ import {
   setAutoFindLoading,
   setAdvancedPanelOpen,
   focusDisplayEpisodeField,
-} from './ui.js';
+  normalizeDisplayEpisode,
+  clearRenderCache,
+} from './ui.js?v=2.0.6';
 
 /** @type {Array} In-memory bookmark store */
 let data = [];
@@ -412,6 +414,7 @@ function handleSave() {
   }
 
   const resolvedTitle = title || defaultWorkTitle(workId);
+  const resolvedDisplayEpisode = normalizeDisplayEpisode(displayEpisode, episodeId);
 
   const path = buildPath(category, workId, episodeId);
   const siteFromDomain = extractSiteNumber(domain);
@@ -432,7 +435,7 @@ function handleSave() {
       Object.assign(bookmark, {
         title: resolvedTitle,
         nickname,
-        displayEpisode,
+        displayEpisode: resolvedDisplayEpisode,
         domain,
         category,
         workId,
@@ -448,7 +451,7 @@ function handleSave() {
       createBookmark({
         title: resolvedTitle,
         nickname,
-        displayEpisode,
+        displayEpisode: resolvedDisplayEpisode,
         domain,
         category,
         workId,
@@ -509,7 +512,7 @@ function handleQuickEditEpisode(id) {
   const next = prompt('실제 회차를 입력하세요 (예: 82화)', current);
   if (next === null) return;
 
-  bookmark.displayEpisode = next.trim();
+  bookmark.displayEpisode = normalizeDisplayEpisode(next.trim(), bookmark.episodeId);
   bookmark.updatedAt = new Date().toISOString();
   persistAndRender();
   toast('회차 저장됨');
@@ -711,6 +714,7 @@ function init() {
   data = loadBookmarks();
   currentSiteNumber = initSettings(data);
   syncSiteNumberInput(currentSiteNumber);
+  clearRenderCache();
   handleUrlParam();
   render();
 

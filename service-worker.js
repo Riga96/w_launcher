@@ -5,7 +5,7 @@
  * Old caches are cleared on activate.
  */
 
-const CACHE_NAME = 'webtoon-launcher-v4';
+const CACHE_NAME = 'webtoon-launcher-v5';
 
 /** Paths that must always try the network first. */
 function isNetworkFirst(url) {
@@ -16,15 +16,8 @@ function isNetworkFirst(url) {
     || path.endsWith('/service-worker.js')
     || path.endsWith('/version.json')
     || path.endsWith('/manifest.json')
-    || path.includes('/js/app.js')
-    || path.includes('/js/ui.js')
-    || path.includes('/js/storage.js')
-    || path.includes('/js/parser.js')
-    || path.includes('/js/launcher.js')
-    || path.includes('/js/site-finder.js')
-    || path.includes('/js/updater.js')
-    || path.includes('/js/version.js')
-    || path.includes('/css/style.css')
+    || path.includes('/js/')
+    || path.includes('/css/')
   );
 }
 
@@ -62,7 +55,9 @@ self.addEventListener('fetch', (event) => {
   if (!url.protocol.startsWith('http')) return;
 
   if (isNetworkFirst(url)) {
-    event.respondWith(networkFirst(event.request));
+    event.respondWith(
+      fetch(event.request, { cache: 'no-store' }).catch(() => caches.match(event.request))
+    );
     return;
   }
 

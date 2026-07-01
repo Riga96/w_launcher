@@ -94,6 +94,25 @@ export function filterBookmarks(bookmarks, query) {
 }
 
 /**
+ * Detect labels that look like internal URL episode IDs, not user-facing names.
+ * @param {string} label
+ * @param {string} episodeId
+ * @returns {boolean}
+ */
+function isInternalEpisodeLabel(label, episodeId) {
+  const trimmed = String(label || '').trim();
+  if (!trimmed) return true;
+
+  const id = String(episodeId || '').trim();
+  if (id && (trimmed === id || trimmed === `${id}화`)) return true;
+
+  // 6+ digit numbers with optional "화" are almost always URL episode IDs.
+  if (/^\d{6,}화?$/.test(trimmed)) return true;
+
+  return false;
+}
+
+/**
  * User-facing episode label, or placeholder when unset.
  * Never falls back to internal episodeId.
  * @param {object} bookmark
@@ -106,12 +125,23 @@ export function episodeDisplayLabel(bookmark) {
   const label = String(raw).trim();
   if (!label) return '회차 미입력';
 
-  const episodeId = String(bookmark.episodeId || '').trim();
-  if (episodeId && (label === episodeId || label === `${episodeId}화`)) {
+  if (isInternalEpisodeLabel(label, bookmark.episodeId)) {
     return '회차 미입력';
   }
 
   return label;
+}
+
+/**
+ * Normalize displayEpisode before saving to localStorage.
+ * @param {string} value
+ * @param {string} episodeId
+ * @returns {string}
+ */
+export function normalizeDisplayEpisode(value, episodeId) {
+  const trimmed = String(value || '').trim();
+  if (isInternalEpisodeLabel(trimmed, episodeId)) return '';
+  return trimmed;
 }
 
 /**
@@ -247,6 +277,14 @@ export function renderList(bookmarks, siteNumber) {
   while (list.children.length > cards.length) {
     list.lastElementChild.remove();
   }
+}
+
+/**
+ * Clear cached row DOM so the next render uses the latest template.
+ */
+export function clearRenderCache() {
+  cardRenderState.clear();
+  document.getElementById('list')?.querySelectorAll('.bm-row').forEach((node) => node.remove());
 }
 
 /**
