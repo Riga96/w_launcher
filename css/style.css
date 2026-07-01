@@ -81,6 +81,17 @@ body {
   font-weight: 700;
   border-radius: 12px;
 }
+.paste-import-active .paste-import-input {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-dim);
+}
+.paste-import-active .paste-import-btn {
+  animation: paste-pulse 1.2s ease-in-out infinite;
+}
+@keyframes paste-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.75; }
+}
 
 /* Advanced collapsible */
 .advanced-content { display: none; padding-top: 4px; }

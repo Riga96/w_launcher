@@ -394,6 +394,10 @@ export function clearPasteUrlInput() {
   if (input) input.value = '';
 }
 
+export function setPasteImportActive(active) {
+  document.querySelector('.paste-import')?.classList.toggle('paste-import-active', active);
+}
+
 export function focusPasteInput() {
   const input = document.getElementById('pasteUrl');
   if (!input) return;

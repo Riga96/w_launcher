@@ -37,9 +37,9 @@
   </div>
 
   <!-- Webtoon add from clipboard -->
-  <button type="button" class="clipboard-import-btn" onclick="handleClipboardImport()">
+  <button type="button" class="clipboard-import-btn">
     <span class="clipboard-import-label">📋 웹툰 추가</span>
-    <span class="clipboard-import-desc">클립보드에 복사된 링크를 바로 저장합니다.</span>
+    <span class="clipboard-import-desc">버튼 → 붙여넣기 한 번으로 저장 (iPhone)</span>
   </button>
 
   <!-- Paste import (primary for iPhone Safari) -->
@@ -157,7 +157,7 @@
           <div class="shortcut-content" id="shortcutContent">
             <div style="margin-top:12px;font-size:12px;color:var(--muted);display:flex;flex-direction:column;gap:8px;">
               <div class="code-block" id="shortcutUrl">로딩 중...</div>
-              <div class="info-box">기존 작품이면 회차만 업데이트되고, 신규 작품은 webtoons-작품ID로 자동 저장됩니다.</div>
+              <div class="info-box">URL 열기 방식이 iPhone에서 가장 확실합니다. 클립보드 복사만 하면 앱에서 <strong>웹툰 추가 → 붙여넣기</strong> 두 번이 필요할 수 있어요.</div>
               <button class="btn-secondary btn-sm" style="align-self:flex-start;" onclick="copyShortcutUrl()">단축어 URL 복사</button>
             </div>
           </div>
@@ -166,10 +166,10 @@
     </div>
   </div>
 
-  <footer class="app-footer">Webtoon Launcher v2.0.8</footer>
+  <footer class="app-footer">Webtoon Launcher v2.0.9</footer>
 
 </div><!-- /wrap -->
 
-<script type="module" src="js/app.js?v=2.0.8"></script>
+<script type="module" src="js/app.js?v=2.0.9"></script>
 </body>
 </html>

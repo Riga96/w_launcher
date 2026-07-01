@@ -1,7 +1,7 @@
 {
   "name": "웹툰 런처",
   "short_name": "웹툰 런처",
-  "description": "도메인이 바뀌어도 작품ID로 이어보는 런처 v2.0.1",
+  "description": "도메인이 바뀌어도 작품ID로 이어보는 런처",
   "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#0f172a",
@@ -14,5 +14,14 @@
       "type": "image/svg+xml",
       "purpose": "any"
     }
-  ]
+  ],
+  "share_target": {
+    "action": "./index.html",
+    "method": "GET",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url"
+    }
+  }
 }

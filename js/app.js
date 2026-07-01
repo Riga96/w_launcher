@@ -16,7 +16,7 @@ import {
   findBookmarkByWork,
   defaultWorkTitle,
   isValidNickname,
-} from './parser.js?v=2.0.8';
+} from './parser.js?v=2.0.9';
 import {
   loadBookmarks,
   saveBookmarks,
@@ -27,11 +27,11 @@ import {
   parseImportJson,
   initSettings,
   setCurrentSiteNumber,
-} from './storage.js?v=2.0.8';
-import { openSaved, openInNewTab } from './launcher.js?v=2.0.8';
-import { findWorkingSiteNumber } from './site-finder.js?v=2.0.8';
-import { APP_VERSION, APP_VERSION_LABEL } from './version.js?v=2.0.8';
-import { checkForUpdate, applyUpdate, showUpdateBanner } from './updater.js?v=2.0.8';
+} from './storage.js?v=2.0.9';
+import { openSaved, openInNewTab } from './launcher.js?v=2.0.9';
+import { findWorkingSiteNumber } from './site-finder.js?v=2.0.9';
+import { APP_VERSION, APP_VERSION_LABEL } from './version.js?v=2.0.9';
+import { checkForUpdate, applyUpdate, showUpdateBanner } from './updater.js?v=2.0.9';
 import {
   toast,
   renderList,
@@ -52,7 +52,9 @@ import {
   focusDisplayEpisodeField,
   normalizeDisplayEpisode,
   clearRenderCache,
-} from './ui.js?v=2.0.8';
+  focusPasteInput,
+  setPasteImportActive,
+} from './ui.js?v=2.0.9';
 
 /** @type {Array} In-memory bookmark store */
 let data = [];
@@ -245,34 +247,147 @@ function handlePasteSave() {
   }
 }
 
+/** Whether the next paste into pasteUrl should auto-save. */
+let pasteImportArmed = false;
+
+/** Prefetched clipboard read started on pointerdown (iOS user-gesture). */
+let clipboardPrefetch = null;
+
 /**
- * Read clipboard text (user gesture required on iOS).
+ * Save a URL string and show feedback.
+ * @param {string} raw
+ * @returns {{ status: string, title?: string, isNew?: boolean }}
+ */
+function saveFromUrlText(raw) {
+  const result = importWebtoonUrl(raw);
+  showImportResult(result);
+  return result;
+}
+
+/**
+ * Read clipboard text — tries multiple APIs (iOS PWA often blocks readText).
  * @returns {Promise<string>}
  */
 async function readClipboardText() {
   try {
     if (navigator.clipboard?.readText) {
-      return await navigator.clipboard.readText();
+      const text = await navigator.clipboard.readText();
+      if (text?.trim()) return text;
     }
   } catch {
-    /* Safari PWA may block clipboard access */
+    /* blocked in standalone PWA */
   }
+
+  try {
+    if (navigator.clipboard?.read) {
+      const items = await navigator.clipboard.read();
+      for (const item of items) {
+        for (const type of ['text/plain', 'text/uri-list']) {
+          if (!item.types.includes(type)) continue;
+          const blob = await item.getType(type);
+          const text = await blob.text();
+          const line = text.split('\n').find((row) => row.trim().startsWith('http'));
+          if (line?.trim()) return line.trim();
+        }
+      }
+    }
+  } catch {
+    /* blocked */
+  }
+
   return '';
 }
 
 /**
- * Read clipboard and save webtoon URL immediately.
+ * Arm pasteUrl so the next paste auto-saves (iPhone fallback).
+ */
+function armPasteImport() {
+  pasteImportArmed = true;
+  setPasteImportActive(true);
+  focusPasteInput();
+  toast('붙여넣기를 한 번 눌러주세요', 'info');
+}
+
+/**
+ * Disarm auto-paste import mode.
+ */
+function disarmPasteImport() {
+  pasteImportArmed = false;
+  setPasteImportActive(false);
+}
+
+/**
+ * Try saving from clipboard; on iPhone PWA fall back to one-tap paste.
  */
 async function handleClipboardImport() {
-  const trimmed = (await readClipboardText()).trim();
+  disarmPasteImport();
 
-  if (!trimmed) {
-    toast('복사된 웹툰 링크가 없어요.', 'info');
+  let text = '';
+  if (clipboardPrefetch) {
+    text = (await clipboardPrefetch).trim();
+    clipboardPrefetch = null;
+  }
+  if (!text) {
+    text = (await readClipboardText()).trim();
+  }
+
+  if (text) {
+    saveFromUrlText(text);
     return;
   }
 
-  const result = importWebtoonUrl(trimmed);
-  showImportResult(result);
+  armPasteImport();
+}
+
+/**
+ * Wire pasteUrl listeners and 웹툰 추가 button for iOS clipboard limits.
+ */
+function setupWebtoonImportUi() {
+  const btn = document.querySelector('.clipboard-import-btn');
+  const input = document.getElementById('pasteUrl');
+  if (!input) return;
+
+  if (btn) {
+    btn.addEventListener('pointerdown', () => {
+      clipboardPrefetch = readClipboardText();
+    }, { passive: true });
+
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      handleClipboardImport();
+    });
+  }
+
+  input.addEventListener('paste', (e) => {
+    if (!pasteImportArmed) return;
+
+    const clip = e.clipboardData?.getData('text/plain')?.trim();
+    if (clip) {
+      e.preventDefault();
+      input.value = clip;
+    }
+
+    window.setTimeout(() => {
+      if (!pasteImportArmed) return;
+      const raw = input.value.trim();
+      if (!raw) return;
+
+      const result = saveFromUrlText(raw);
+      if (result.status !== 'invalid' && result.status !== 'empty') {
+        clearPasteUrlInput();
+        disarmPasteImport();
+        input.blur();
+      }
+    }, 0);
+  });
+
+  input.addEventListener('blur', () => {
+    window.setTimeout(() => {
+      if (pasteImportArmed && !input.value.trim()) {
+        disarmPasteImport();
+      }
+    }, 200);
+  });
 }
 
 /**
@@ -600,19 +715,30 @@ function copyShortcutUrl() {
 }
 
 /**
- * Handle ?url= query param from iPhone Shortcuts.
+ * Extract a webtoon URL from launch query params (Shortcuts / Share Target).
+ * @param {URLSearchParams} params
+ * @returns {string | null}
+ */
+function extractLaunchUrl(params) {
+  const direct = params.get('url');
+  if (direct?.trim()) return direct.trim();
+
+  const text = params.get('text') || params.get('title') || '';
+  const match = text.match(/https?:\/\/[^\s"'<>]+/i);
+  return match ? match[0] : null;
+}
+
+/**
+ * Handle ?url= query param from iPhone Shortcuts / Share Target.
  */
 function handleUrlParam() {
   const params = new URLSearchParams(location.search);
-  const raw = params.get('url');
+  const raw = extractLaunchUrl(params);
   if (!raw) return;
 
   history.replaceState({}, '', location.pathname);
   const decoded = decodeURIComponent(raw);
-  const result = importWebtoonUrl(decoded);
-  if (result.status !== 'invalid' && result.status !== 'empty') {
-    showImportResult(result);
-  }
+  saveFromUrlText(decoded);
 }
 
 /* ── Expose handlers for inline onclick attributes ── */
@@ -651,6 +777,7 @@ function init() {
   currentSiteNumber = initSettings(data);
   syncSiteNumberInput(currentSiteNumber);
   clearRenderCache();
+  setupWebtoonImportUi();
   handleUrlParam();
   render();
 
