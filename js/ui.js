@@ -95,12 +95,23 @@ export function filterBookmarks(bookmarks, query) {
 
 /**
  * User-facing episode label, or placeholder when unset.
+ * Never falls back to internal episodeId.
  * @param {object} bookmark
  * @returns {string}
  */
 export function episodeDisplayLabel(bookmark) {
-  const label = (bookmark.displayEpisode || '').trim();
-  return label || '회차 미입력';
+  const raw = bookmark?.displayEpisode;
+  if (raw == null) return '회차 미입력';
+
+  const label = String(raw).trim();
+  if (!label) return '회차 미입력';
+
+  const episodeId = String(bookmark.episodeId || '').trim();
+  if (episodeId && (label === episodeId || label === `${episodeId}화`)) {
+    return '회차 미입력';
+  }
+
+  return label;
 }
 
 /**
@@ -128,15 +139,14 @@ export function buildCardHtml(bookmark, siteNumber) {
   const favClass = bookmark.favorite ? 'bm-icon active' : 'bm-icon';
   const favIcon = bookmark.favorite ? '★' : '☆';
   const episodeText = esc(episodeDisplayLabel(bookmark));
-  const episodeClass = (bookmark.displayEpisode || '').trim() ? 'bm-ep bm-ep-tap' : 'bm-ep bm-ep-tap bm-ep-empty';
-  const updated = esc(formatUpdatedAtShort(bookmark.updatedAt));
-  const subtitle = updated ? `${episodeText} · ${updated}` : episodeText;
+  const hasDisplayEpisode = episodeDisplayLabel(bookmark) !== '회차 미입력';
+  const episodeClass = hasDisplayEpisode ? 'bm-ep bm-ep-tap' : 'bm-ep bm-ep-tap bm-ep-empty';
 
   return `
   <div class="bm-badge" style="background:${esc(color)}" aria-hidden="true">${label}</div>
   <div class="bm-info">
     <div class="bm-title">${esc(bookmark.title)}</div>
-    <button type="button" class="${episodeClass}" onclick="handleQuickEditEpisode('${id}')" title="탭하여 회차 수정">${subtitle}</button>
+    <button type="button" class="${episodeClass}" onclick="handleQuickEditEpisode('${id}')" title="탭하여 회차 수정">${episodeText}</button>
   </div>
   <button class="bm-open" onclick="handleOpenSaved('${id}')" title="저장된 화 열기">저장된 화 열기</button>
   <button class="bm-site-plus" onclick="handleLaunchSitePlus('${id}')" title="사이트 번호 +1 후 열기">+번호</button>
@@ -154,7 +164,7 @@ export function buildCardHtml(bookmark, siteNumber) {
  * @returns {string}
  */
 function cardStateKey(bookmark, siteNumber) {
-  return `${bookmark.updatedAt}|${bookmark.favorite}|${bookmark.title}|${bookmark.nickname}|${bookmark.displayEpisode}|${bookmark.episodeId}|${bookmark.path}|${siteNumber}`;
+  return `${bookmark.updatedAt}|${bookmark.favorite}|${bookmark.title}|${bookmark.nickname}|${episodeDisplayLabel(bookmark)}|${bookmark.path}|${siteNumber}`;
 }
 
 /**

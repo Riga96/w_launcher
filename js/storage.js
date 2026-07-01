@@ -54,6 +54,20 @@ export function migrateBookmark(bookmark) {
     migrated.updatedAt = new Date().toISOString();
   }
 
+  // Clear displayEpisode if it was copied from internal episodeId (legacy data).
+  const displayEpisode = migrated.displayEpisode == null
+    ? ''
+    : String(migrated.displayEpisode).trim();
+  const episodeId = String(migrated.episodeId || '').trim();
+  if (
+    !displayEpisode
+    || (episodeId && (displayEpisode === episodeId || displayEpisode === `${episodeId}화`))
+  ) {
+    migrated.displayEpisode = '';
+  } else {
+    migrated.displayEpisode = displayEpisode;
+  }
+
   return migrated;
 }
 
@@ -74,6 +88,12 @@ export function migrateAll(bookmarks) {
 function bookmarkNeedsMigration(bookmark) {
   if (!bookmark.updatedAt) return true;
   if (!bookmark.path && bookmark.workId && bookmark.episodeId) return true;
+  if (bookmark.displayEpisode === undefined || bookmark.displayEpisode === null) return true;
+  const displayEpisode = String(bookmark.displayEpisode || '').trim();
+  const episodeId = String(bookmark.episodeId || '').trim();
+  if (episodeId && (displayEpisode === episodeId || displayEpisode === `${episodeId}화`)) {
+    return true;
+  }
   return Object.keys(BOOKMARK_DEFAULTS).some(
     (key) => bookmark[key] === undefined || bookmark[key] === null
   );
