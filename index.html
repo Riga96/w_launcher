@@ -32,15 +32,30 @@
     </div>
     <div>
       <h1>웹툰 런처</h1>
-      <p>도메인이 바뀌어도 작품ID로 이어보는 런처</p>
+      <p>저장된 회차를 도메인 번호만 바꿔 바로 여는 런처</p>
     </div>
   </div>
 
-  <!-- Clipboard import -->
+  <!-- Clipboard import (optional auto) -->
   <button type="button" class="clipboard-import-btn" onclick="handleClipboardImport()">
     <span class="clipboard-import-label">📋 복사한 웹툰 추가</span>
-    <span class="clipboard-import-desc">웹툰 페이지 주소를 복사한 뒤 이 버튼을 누르세요.</span>
+    <span class="clipboard-import-desc">자동 추가가 안 되면 아래 입력란에 붙여넣기 후 저장하세요.</span>
   </button>
+
+  <!-- Paste import (primary for iPhone Safari) -->
+  <div class="paste-import">
+    <input
+      id="pasteUrl"
+      class="paste-import-input mono"
+      type="url"
+      inputmode="url"
+      autocapitalize="off"
+      autocorrect="off"
+      spellcheck="false"
+      placeholder="웹툰 주소를 여기에 붙여넣기"
+    />
+    <button type="button" class="paste-import-btn btn-primary" onclick="handlePasteSave()">저장</button>
+  </div>
 
   <!-- Site number setting -->
   <div class="card">
@@ -55,120 +70,104 @@
     </div>
   </div>
 
-  <!-- Quick URL save -->
-  <div class="card">
-    <div class="card-title">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--accent)"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
-      URL 붙여넣기로 저장
-    </div>
-    <div class="card-desc">기존 작품이면 회차를 자동 업데이트, 신규이면 아래 양식에 채워집니다.</div>
-    <div class="split">
-      <input id="shareUrl" class="mono" placeholder="https://사이트.com/webtoons/작품ID/회차ID.html" />
-      <button class="btn-primary btn-sm" onclick="handleShareSave()" style="flex-shrink:0;height:auto;padding:10px 18px;">저장</button>
-    </div>
-  </div>
-
   <!-- Search -->
   <div class="search-wrap">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-    <input id="search" placeholder="작품명, 메모, ID 검색" oninput="render()" />
+    <input id="search" placeholder="작품명, 약칭, 메모, ID 검색" oninput="render()" />
   </div>
 
-  <!-- Bookmark list -->
+  <!-- Saved works list -->
   <div id="list"></div>
 
-  <!-- Add / Edit form -->
-  <div class="card" id="formCard">
-    <div class="card-title" id="formTitle">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--accent)"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
-      새 작품 추가
-    </div>
-    <div style="display:flex;flex-direction:column;gap:12px;margin-top:4px;">
-      <div class="field">
-        <label>웹툰 URL 붙여넣기</label>
-        <div class="split">
-          <input id="urlInput" class="mono" placeholder="https://사이트.com/webtoons/작품ID/회차ID.html" />
-          <button class="btn-secondary btn-sm" onclick="handleParseUrl()" style="flex-shrink:0;white-space:nowrap;">분석</button>
-        </div>
-        <span style="font-size:10px;color:var(--muted)">/카테고리/작품ID/회차ID.html 자동 추출</span>
-      </div>
-      <div class="field"><label>작품명</label><input id="fTitle" placeholder="예: 화산귀환" /></div>
-      <div class="row2">
-        <div class="field"><label>카테고리</label><input id="fCategory" class="mono" placeholder="webtoons" /></div>
-        <div class="field"><label>도메인</label><input id="fDomain" class="mono" placeholder="example.com" /></div>
-      </div>
-      <div class="row2">
-        <div class="field"><label>작품 ID</label><input id="fWorkId" class="mono" inputmode="numeric" placeholder="12345" /></div>
-        <div class="field"><label>회차 ID</label><input id="fEpisodeId" class="mono" inputmode="numeric" placeholder="89" /></div>
-      </div>
-      <div class="field"><label>메모</label><textarea id="fMemo" placeholder="예: 여기까지 봄, 다음에 이어보기"></textarea></div>
-      <div class="btn-row">
-        <button class="btn-primary" id="saveBtn" onclick="handleSave()">저장</button>
-        <button class="btn-ghost" onclick="resetForm()">초기화</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Tools -->
-  <div class="tools">
-    <!-- Bulk domain -->
-    <div class="card">
-      <div class="card-title">새 도메인 일괄 적용</div>
-      <div class="card-desc">저장된 모든 작품의 도메인을 바꿉니다.</div>
-      <div class="split">
-        <input id="bulkDomain" class="mono" placeholder="newsite.com" style="height:40px;" />
-        <button class="btn-primary btn-sm" onclick="handleBulkDomain()" style="flex-shrink:0;">적용</button>
-      </div>
-    </div>
-    <!-- Data -->
-    <div class="card">
-      <div class="card-title">데이터 관리</div>
-      <div class="card-desc">기기 간 이동이나 백업에 사용하세요.</div>
-      <div class="btn-row">
-        <button class="btn-secondary btn-sm" onclick="handleBackup()">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-          JSON 백업
-        </button>
-        <button class="btn-secondary btn-sm btn-file">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-          복원
-          <input type="file" accept="application/json" onchange="handleRestore(event)" />
-        </button>
-        <button class="btn-danger btn-sm" onclick="handleClearAll()">전체 삭제</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- iPhone shortcut -->
+  <!-- Advanced / manual section -->
   <div class="card">
-    <div class="section-title-row" onclick="toggleShortcut()">
-      <div class="card-title" style="margin-bottom:0">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--accent)"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
-        iPhone 단축어로 자동 저장하기
-      </div>
-      <span id="shortcutArrow" style="color:var(--muted);font-size:14px;">▼</span>
+    <div class="section-title-row" onclick="toggleAdvanced()">
+      <div class="card-title" style="margin-bottom:0">고급 수동 추가</div>
+      <span id="advancedArrow" style="color:var(--muted);font-size:14px;">▼</span>
     </div>
-    <div style="font-size:11px;color:var(--muted);margin-top:3px;">Safari 공유 버튼 한 번으로 현재 회차를 자동 기록</div>
-    <div class="shortcut-content" id="shortcutContent">
-      <div style="margin-top:12px;font-size:12px;color:var(--muted);display:flex;flex-direction:column;gap:8px;">
-        <div style="font-size:12px;font-weight:600;color:var(--text)">단축어 동작 원리</div>
-        <p>Safari에서 웹툰 페이지를 열고 공유 버튼을 누르면, 단축어가 현재 URL을 아래 주소로 보냅니다.</p>
-        <div class="code-block" id="shortcutUrl">로딩 중...</div>
-        <div style="font-size:12px;font-weight:600;color:var(--text);margin-top:4px;">설정 방법</div>
-        <ol class="steps">
-          <li>iPhone <strong>단축어</strong> 앱 열기 → 오른쪽 상단 <strong>+</strong></li>
-          <li><strong>동작 추가</strong> → Safari에서 열기 선택</li>
-          <li>URL 입력란에 위 주소 복사 후 뒤에 <strong>단축어 입력</strong> 변수 추가</li>
-          <li>단축어 이름을 <strong>웹툰 기록</strong>으로 저장</li>
-          <li>Safari 공유 시트에서 이 단축어를 탭하면 자동 저장</li>
-        </ol>
-        <div class="info-box">기존 작품이면 회차만 업데이트되고, 신규 작품이면 양식에 자동으로 채워집니다.</div>
-        <button class="btn-secondary btn-sm" style="align-self:flex-start;margin-top:4px;" onclick="copyShortcutUrl()">단축어 URL 복사</button>
+    <div class="advanced-content" id="advancedContent">
+      <div style="display:flex;flex-direction:column;gap:14px;margin-top:12px;">
+        <!-- Manual add / edit form -->
+        <div id="formCard">
+          <div class="card-title" id="formTitle" style="margin-bottom:8px">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--accent)"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+            새 작품 추가
+          </div>
+          <div style="display:flex;flex-direction:column;gap:12px;">
+            <div class="field">
+              <label>웹툰 URL 붙여넣기</label>
+              <div class="split">
+                <input id="urlInput" class="mono" placeholder="https://blacktoon415.com/webtoons/17731/1621901.html" />
+                <button class="btn-secondary btn-sm" onclick="handleParseUrl()" style="flex-shrink:0;white-space:nowrap;">분석</button>
+              </div>
+            </div>
+            <div class="row2">
+              <div class="field"><label>작품명</label><input id="fTitle" placeholder="예: 화산귀환" /></div>
+              <div class="field"><label>약칭 (2~4글자)</label><input id="fNickname" maxlength="4" placeholder="예: 화귀" /></div>
+            </div>
+            <div class="field">
+              <label>실제 회차</label>
+              <input id="fDisplayEpisode" placeholder="예: 82화" />
+              <span style="font-size:10px;color:var(--muted)">목록에 표시되는 회차 이름입니다. URL의 회차 ID와 별개예요.</span>
+            </div>
+            <div class="row2">
+              <div class="field"><label>카테고리</label><input id="fCategory" class="mono" placeholder="webtoons" /></div>
+              <div class="field"><label>도메인</label><input id="fDomain" class="mono" placeholder="blacktoon415.com" /></div>
+            </div>
+            <div class="row2">
+              <div class="field"><label>작품 ID</label><input id="fWorkId" class="mono" placeholder="17731" /></div>
+              <div class="field"><label>회차 ID (URL)</label><input id="fEpisodeId" class="mono" placeholder="1621901" /></div>
+            </div>
+            <div class="field"><label>메모</label><textarea id="fMemo" placeholder="예: 메모"></textarea></div>
+            <div class="btn-row">
+              <button class="btn-primary" id="saveBtn" onclick="handleSave()">저장</button>
+              <button class="btn-ghost" onclick="resetForm()">초기화</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tools -->
+        <div class="tools">
+          <div class="card" style="padding:12px;">
+            <div class="card-title">새 도메인 일괄 적용</div>
+            <div class="split">
+              <input id="bulkDomain" class="mono" placeholder="blacktoon415.com" />
+              <button class="btn-primary btn-sm" onclick="handleBulkDomain()" style="flex-shrink:0;">적용</button>
+            </div>
+          </div>
+          <div class="card" style="padding:12px;">
+            <div class="card-title">데이터 관리</div>
+            <div class="btn-row">
+              <button class="btn-secondary btn-sm" onclick="handleBackup()">JSON 백업</button>
+              <button class="btn-secondary btn-sm btn-file">
+                복원
+                <input type="file" accept="application/json" onchange="handleRestore(event)" />
+              </button>
+              <button class="btn-danger btn-sm" onclick="handleClearAll()">전체 삭제</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- iPhone shortcut -->
+        <div>
+          <div class="section-title-row" onclick="toggleShortcut()">
+            <div class="card-title" style="margin-bottom:0">iPhone 단축어로 자동 저장</div>
+            <span id="shortcutArrow" style="color:var(--muted);font-size:14px;">▼</span>
+          </div>
+          <div style="font-size:11px;color:var(--muted);margin-top:3px;">Safari 공유 버튼 한 번으로 현재 회차를 자동 기록</div>
+          <div class="shortcut-content" id="shortcutContent">
+            <div style="margin-top:12px;font-size:12px;color:var(--muted);display:flex;flex-direction:column;gap:8px;">
+              <div class="code-block" id="shortcutUrl">로딩 중...</div>
+              <div class="info-box">기존 작품이면 회차만 업데이트되고, 신규 작품은 webtoons-작품ID로 자동 저장됩니다.</div>
+              <button class="btn-secondary btn-sm" style="align-self:flex-start;" onclick="copyShortcutUrl()">단축어 URL 복사</button>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
 
-  <footer class="app-footer">Webtoon Launcher v2.0.1</footer>
+  <footer class="app-footer">Webtoon Launcher v2.0.3</footer>
 
 </div><!-- /wrap -->
 

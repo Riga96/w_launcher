@@ -164,6 +164,26 @@ export function normDomain(value) {
 }
 
 /**
+ * Default auto-generated title for a new work.
+ * @param {string} workId
+ * @returns {string}
+ */
+export function defaultWorkTitle(workId) {
+  return `webtoons-${workId}`;
+}
+
+/**
+ * Validate nickname length (2–4 chars when provided).
+ * @param {string} nickname
+ * @returns {boolean}
+ */
+export function isValidNickname(nickname) {
+  if (!nickname) return true;
+  const len = nickname.length;
+  return len >= 2 && len <= 4;
+}
+
+/**
  * Find a bookmark that matches the parsed URL's category and workId.
  * @param {Array} bookmarks
  * @param {{ category: string, workId: string }} parsed

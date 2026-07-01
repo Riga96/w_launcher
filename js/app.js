@@ -1,8 +1,8 @@
 /**
- * app.js — Application entry point and module wiring.
+ * app.js — Saved-episode launcher entry point.
  *
  * Opens bookmarks via http://blacktoon{currentSiteNumber}.com + saved path.
- * The site number is global; episode paths stay fixed unless user navigates prev/next.
+ * Episode IDs are never incremented — only the saved path is opened.
  */
 
 import {
@@ -14,11 +14,12 @@ import {
   normDomain,
   extractSiteNumber,
   findBookmarkByWork,
+  defaultWorkTitle,
+  isValidNickname,
 } from './parser.js';
 import {
   loadBookmarks,
   saveBookmarks,
-  upsertHistory,
   createBookmark,
   applyBulkDomain,
   mergeImportedBookmarks,
@@ -27,7 +28,7 @@ import {
   initSettings,
   setCurrentSiteNumber,
 } from './storage.js';
-import { openCurrent, openAdjacent, openInNewTab } from './launcher.js';
+import { openSaved, openInNewTab } from './launcher.js';
 import { findWorkingSiteNumber } from './site-finder.js';
 import { APP_VERSION, APP_VERSION_LABEL } from './version.js';
 import { checkForUpdate, applyUpdate, showUpdateBanner } from './updater.js';
@@ -42,11 +43,14 @@ import {
   setShortcutUrlText,
   setShortcutPanelOpen,
   copyToClipboard,
-  clearShareUrlInput,
+  clearPasteUrlInput,
   clearBulkDomainInput,
   syncSiteNumberInput,
   readSiteNumberInput,
   setAutoFindLoading,
+  focusPasteInput,
+  setAdvancedPanelOpen,
+  focusDisplayEpisodeField,
 } from './ui.js';
 
 /** @type {Array} In-memory bookmark store */
@@ -58,16 +62,16 @@ let currentSiteNumber = null;
 /** @type {string | null} Id of bookmark currently being edited */
 let editingId = null;
 
-/** @type {Set<string>} Bookmark ids with expanded history panels */
-const expandedHistory = new Set();
-
 /** @type {boolean} Whether the shortcut guide panel is open */
 let shortcutOpen = false;
+
+/** @type {boolean} Whether the advanced manual section is open */
+let advancedOpen = false;
 
 /* ── Render bridge ── */
 
 function render() {
-  renderList(data, expandedHistory, currentSiteNumber);
+  renderList(data, currentSiteNumber);
 }
 
 function persistAndRender() {
@@ -93,15 +97,13 @@ function applySiteNumberFromParsed(parsed) {
 
 /**
  * Apply parsed URL fields to a bookmark record.
+ * title, nickname, and displayEpisode are never modified — preserved on re-import.
  * @param {object} bookmark
  * @param {object} parsed
  * @param {string} rawUrl
  */
 function applyParsedToBookmark(bookmark, parsed, rawUrl) {
   const now = new Date().toISOString();
-  const openUrl = parsed.siteNumber != null
-    ? buildOpenUrl(parsed.siteNumber, parsed.path)
-    : rawUrl;
 
   bookmark.workId = parsed.workId;
   bookmark.episodeId = parsed.episodeId;
@@ -110,11 +112,6 @@ function applyParsedToBookmark(bookmark, parsed, rawUrl) {
   bookmark.lastUrl = rawUrl;
   bookmark.domain = parsed.host || bookmark.domain;
   bookmark.updatedAt = now;
-  bookmark.history = upsertHistory(bookmark.history, {
-    episodeId: parsed.episodeId,
-    url: openUrl,
-    viewedAt: now,
-  });
 }
 
 /**
@@ -129,101 +126,129 @@ function updateBookmarkFromParsed(existing, parsed, rawUrl) {
 }
 
 /**
- * Handle pasted share URL save (top input).
- */
-function handleShareSave() {
-  const raw = document.getElementById('shareUrl').value.trim();
-  const parsed = parseWebtoonUrl(raw);
-  if (!parsed) {
-    alert('URL 형식을 확인해주세요.');
-    return;
-  }
-
-  const existing = findBookmarkByWork(data, parsed);
-  if (existing) {
-    updateBookmarkFromParsed(existing, parsed, raw);
-    persistAndRender();
-    toast(`"${existing.title}" 회차 ${parsed.episodeId}로 업데이트됨`);
-  } else {
-    fillForm({ ...parsed, url: raw });
-    applySiteNumberFromParsed(parsed);
-    toast('새 작품 — 작품명을 입력하고 저장해주세요.', 'info');
-    scrollToForm();
-  }
-  clearShareUrlInput();
-}
-
-/**
- * Save or update a bookmark from clipboard-import parsed data.
+ * Create and store a new bookmark from parsed URL data.
  * @param {object} parsed
- * @returns {'success' | 'already'}
+ * @param {string} [rawUrl]
+ * @returns {object}
  */
-function saveFromClipboard(parsed) {
+function createNewBookmarkFromParsed(parsed, rawUrl) {
   applySiteNumberFromParsed(parsed);
 
   const now = new Date().toISOString();
-  const openUrl = parsed.siteNumber != null
-    ? buildOpenUrl(parsed.siteNumber, parsed.path)
-    : parsed.lastUrl;
+
+  const bookmark = createBookmark({
+    title: defaultWorkTitle(parsed.workId),
+    nickname: '',
+    displayEpisode: '',
+    favorite: false,
+    domain: parsed.host || parsed.domain || '',
+    category: parsed.category,
+    workId: parsed.workId,
+    episodeId: parsed.episodeId,
+    path: parsed.path,
+    lastUrl: rawUrl || parsed.lastUrl,
+    updatedAt: now,
+    history: [],
+  });
+
+  data.unshift(bookmark);
+  return bookmark;
+}
+
+/**
+ * Import a webtoon URL (clipboard, paste input, shortcuts).
+ * @param {string} rawUrl
+ * @returns {{ status: 'empty' | 'invalid' | 'already' | 'success', title?: string, isNew?: boolean }}
+ */
+function importWebtoonUrl(rawUrl) {
+  const trimmed = (rawUrl || '').trim();
+  if (!trimmed) return { status: 'empty' };
+
+  const parsed = parseClipboardWebtoonUrl(trimmed);
+  if (!parsed) return { status: 'invalid' };
+
+  applySiteNumberFromParsed(parsed);
   const existing = findBookmarkByWork(data, parsed);
 
   if (existing) {
     const samePath = existing.path === parsed.path;
-
-    applyParsedToBookmark(existing, parsed, parsed.lastUrl);
+    applyParsedToBookmark(existing, parsed, trimmed);
     persistAndRender();
-    return samePath ? 'already' : 'success';
+    return { status: samePath ? 'already' : 'success', title: existing.title };
   }
 
-  data.unshift(
-    createBookmark({
-      title: `webtoons-${parsed.workId}`,
-      domain: parsed.host,
-      category: 'webtoons',
-      workId: parsed.workId,
-      episodeId: parsed.episodeId,
-      path: parsed.path,
-      lastUrl: parsed.lastUrl,
-      updatedAt: now,
-      history: [{ episodeId: parsed.episodeId, url: openUrl, viewedAt: now }],
-    })
-  );
-
+  const bookmark = createNewBookmarkFromParsed(parsed, trimmed);
   persistAndRender();
-  return 'success';
+  return { status: 'success', title: bookmark.title, isNew: true };
 }
 
 /**
- * Read clipboard and import a webtoon URL (user gesture required).
+ * Show toast feedback for import result.
+ * @param {{ status: string, title?: string, isNew?: boolean }} result
  */
-async function handleClipboardImport() {
-  let text;
-
-  try {
-    if (!navigator.clipboard?.readText) {
-      toast('Safari에서는 버튼을 한 번 더 눌러야 할 수 있어요.', 'info');
-      return;
-    }
-    text = await navigator.clipboard.readText();
-  } catch {
-    toast('Safari에서는 버튼을 한 번 더 눌러야 할 수 있어요.', 'info');
+function showImportResult(result) {
+  if (result.status === 'empty') {
+    toast('웹툰 주소를 붙여넣어주세요.', 'info');
     return;
   }
-
-  const trimmed = (text || '').trim();
-  if (!trimmed) {
-    toast('복사된 링크가 없어요.', 'info');
-    return;
-  }
-
-  const parsed = parseClipboardWebtoonUrl(trimmed);
-  if (!parsed) {
+  if (result.status === 'invalid') {
     toast('웹툰 링크 형식이 아니에요.', 'info');
     return;
   }
+  if (result.status === 'already') {
+    toast('이미 저장된 회차예요.');
+    return;
+  }
+  if (result.isNew) {
+    toast(`"${result.title}" 저장됨 — 회차를 탭해 실제 회차를 입력하세요.`, 'info');
+    return;
+  }
+  toast(`"${result.title}" 회차 저장됨`);
+}
 
-  const result = saveFromClipboard(parsed);
-  toast(result === 'already' ? '이미 저장된 회차예요.' : '복사한 웹툰을 저장했어요.');
+/**
+ * Save from the main paste input.
+ */
+function handlePasteSave() {
+  const raw = document.getElementById('pasteUrl')?.value ?? '';
+  const result = importWebtoonUrl(raw);
+  showImportResult(result);
+  if (result.status === 'success' || result.status === 'already') {
+    clearPasteUrlInput();
+  }
+}
+
+/**
+ * Read clipboard and import a webtoon URL (best-effort; paste input is fallback).
+ */
+async function handleClipboardImport() {
+  let text = '';
+
+  try {
+    if (navigator.clipboard?.readText) {
+      text = await navigator.clipboard.readText();
+    }
+  } catch {
+    /* Safari PWA — fall through to paste input */
+  }
+
+  const trimmed = (text || '').trim();
+  if (trimmed) {
+    const pasteInput = document.getElementById('pasteUrl');
+    if (pasteInput) pasteInput.value = trimmed;
+
+    const result = importWebtoonUrl(trimmed);
+    if (result.status !== 'invalid') {
+      showImportResult(result);
+      if (result.status === 'success' || result.status === 'already') {
+        clearPasteUrlInput();
+      }
+      return;
+    }
+  }
+
+  toast('아래 입력란에 붙여넣기 후 저장을 눌러주세요.', 'info');
+  focusPasteInput();
 }
 
 /**
@@ -295,6 +320,8 @@ function handleParseUrl() {
   document.getElementById('fCategory').value = parsed.category;
   document.getElementById('fWorkId').value = parsed.workId;
   document.getElementById('fEpisodeId').value = parsed.episodeId;
+  document.getElementById('fTitle').value = defaultWorkTitle(parsed.workId);
+  document.getElementById('fNickname').value = '';
   applySiteNumberFromParsed(parsed);
 }
 
@@ -302,13 +329,29 @@ function handleParseUrl() {
  * Save or update a bookmark from the form.
  */
 function handleSave() {
-  const { title, domain: rawDomain, category, workId, episodeId, memo } = readFormValues();
+  const {
+    title,
+    nickname,
+    displayEpisode,
+    domain: rawDomain,
+    category,
+    workId,
+    episodeId,
+    memo,
+  } = readFormValues();
   const domain = normDomain(rawDomain);
 
-  if (!title || !domain || !category || !workId || !episodeId) {
-    alert('작품명, 도메인, 카테고리, 작품ID, 회차ID를 입력해주세요.');
+  if (!domain || !category || !workId || !episodeId) {
+    alert('도메인, 카테고리, 작품ID, 회차ID를 입력해주세요.');
     return;
   }
+
+  if (!isValidNickname(nickname)) {
+    alert('약칭은 2~4글자로 입력해주세요.');
+    return;
+  }
+
+  const resolvedTitle = title || defaultWorkTitle(workId);
 
   const path = buildPath(category, workId, episodeId);
   const siteFromDomain = extractSiteNumber(domain);
@@ -327,7 +370,9 @@ function handleSave() {
     const bookmark = data.find((x) => x.id === editingId);
     if (bookmark) {
       Object.assign(bookmark, {
-        title,
+        title: resolvedTitle,
+        nickname,
+        displayEpisode,
         domain,
         category,
         workId,
@@ -341,7 +386,9 @@ function handleSave() {
   } else {
     data.unshift(
       createBookmark({
-        title,
+        title: resolvedTitle,
+        nickname,
+        displayEpisode,
         domain,
         category,
         workId,
@@ -350,10 +397,10 @@ function handleSave() {
         memo,
         lastUrl: openUrl,
         updatedAt: now,
-        history: [{ episodeId, url: openUrl, viewedAt: now }],
+        history: [],
       })
     );
-    toast(`"${title}" 저장됨`);
+    toast(`"${resolvedTitle}" 저장됨`);
   }
 
   persistAndRender();
@@ -377,6 +424,10 @@ function handleEdit(id) {
   if (!bookmark) return;
 
   editingId = id;
+  if (!advancedOpen) {
+    advancedOpen = true;
+    setAdvancedPanelOpen(true);
+  }
   populateEditForm(
     bookmark,
     currentSiteNumber != null
@@ -387,6 +438,33 @@ function handleEdit(id) {
 }
 
 /**
+ * Quick-edit displayEpisode from the list row.
+ * @param {string} id
+ */
+function handleQuickEditEpisode(id) {
+  const bookmark = data.find((x) => x.id === id);
+  if (!bookmark) return;
+
+  const current = bookmark.displayEpisode || '';
+  const next = prompt('실제 회차를 입력하세요 (예: 82화)', current);
+  if (next === null) return;
+
+  bookmark.displayEpisode = next.trim();
+  bookmark.updatedAt = new Date().toISOString();
+  persistAndRender();
+  toast('회차 저장됨');
+}
+
+/**
+ * Open edit form focused on displayEpisode.
+ * @param {string} id
+ */
+function handleEditEpisode(id) {
+  handleEdit(id);
+  focusDisplayEpisodeField();
+}
+
+/**
  * Delete a bookmark after confirmation.
  * @param {string} id
  */
@@ -394,26 +472,20 @@ function handleDelete(id) {
   const bookmark = data.find((x) => x.id === id);
   if (!bookmark || !confirm(`"${bookmark.title}"을 삭제할까요?`)) return;
   data = data.filter((x) => x.id !== id);
-  expandedHistory.delete(id);
   persistAndRender();
 }
 
 /**
- * Launch current, next, or previous episode for a bookmark.
- * @param {'current' | 'next' | 'prev'} action
+ * Open the saved episode path for a bookmark.
  * @param {string} id
  */
-function handleLaunch(action, id) {
+function handleOpenSaved(id) {
   const bookmark = data.find((x) => x.id === id);
   if (!bookmark || !requireSiteNumber()) return;
 
-  const result = action === 'current'
-    ? openCurrent(bookmark, currentSiteNumber)
-    : openAdjacent(bookmark, currentSiteNumber, action);
-
+  const result = openSaved(bookmark, currentSiteNumber);
   if (!result) return;
 
-  persistAndRender();
   openInNewTab(result.url);
   toast(`"${bookmark.title}" — ${result.label}`);
 }
@@ -430,10 +502,9 @@ function handleLaunchSitePlus(id) {
   setCurrentSiteNumber(currentSiteNumber);
   syncSiteNumberInput(currentSiteNumber);
 
-  const result = openCurrent(bookmark, currentSiteNumber);
+  const result = openSaved(bookmark, currentSiteNumber);
   if (!result) return;
 
-  persistAndRender();
   openInNewTab(result.url);
   toast(`+${currentSiteNumber} — "${bookmark.title}" 열기`);
 }
@@ -501,7 +572,6 @@ function handleRestore(event) {
 function handleClearAll() {
   if (!confirm('정말로 모든 북마크를 삭제하시겠습니까?')) return;
   data = [];
-  expandedHistory.clear();
   persistAndRender();
   toast('전체 삭제됨', 'info');
 }
@@ -512,6 +582,14 @@ function handleClearAll() {
 function toggleShortcut() {
   shortcutOpen = !shortcutOpen;
   setShortcutPanelOpen(shortcutOpen);
+}
+
+/**
+ * Toggle the advanced manual section.
+ */
+function toggleAdvanced() {
+  advancedOpen = !advancedOpen;
+  setAdvancedPanelOpen(advancedOpen);
 }
 
 /**
@@ -531,35 +609,27 @@ function handleUrlParam() {
 
   history.replaceState({}, '', location.pathname);
   const decoded = decodeURIComponent(raw);
-  const parsed = parseWebtoonUrl(decoded);
-  if (!parsed) return;
-
-  const existing = findBookmarkByWork(data, parsed);
-  if (existing) {
-    updateBookmarkFromParsed(existing, parsed, decoded);
-    persistAndRender();
-    toast(`"${existing.title}" 회차 ${parsed.episodeId}로 자동 업데이트됨`);
-  } else {
-    fillForm({ ...parsed, url: decoded });
-    applySiteNumberFromParsed(parsed);
-    toast('URL에서 정보를 불러왔어요. 작품명을 입력하고 저장해주세요.', 'info');
-    setTimeout(scrollToForm, 100);
+  const result = importWebtoonUrl(decoded);
+  if (result.status !== 'invalid' && result.status !== 'empty') {
+    showImportResult(result);
   }
 }
 
 /* ── Expose handlers for inline onclick attributes ── */
 
 const publicApi = {
-  handleShareSave,
   handleClipboardImport,
+  handlePasteSave,
   handleSaveSiteNumber,
   handleAutoFindSiteNumber,
   handleParseUrl,
   handleSave,
   resetForm,
   handleEdit,
+  handleEditEpisode,
+  handleQuickEditEpisode,
   handleDelete,
-  handleLaunch,
+  handleOpenSaved,
   handleLaunchSitePlus,
   handleToggleFavorite,
   handleBulkDomain,
@@ -567,6 +637,7 @@ const publicApi = {
   handleRestore,
   handleClearAll,
   toggleShortcut,
+  toggleAdvanced,
   copyShortcutUrl,
   render,
   handleApplyUpdate: applyUpdate,

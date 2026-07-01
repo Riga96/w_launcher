@@ -28,6 +28,7 @@ const BOOKMARK_DEFAULTS = {
   badgeColor: '',
   path: '',
   lastUrl: '',
+  displayEpisode: '',
 };
 
 /**

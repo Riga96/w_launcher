@@ -1,11 +1,8 @@
 /**
- * ui.js — DOM rendering, dialogs, toasts, and form state.
+ * ui.js — DOM rendering for the saved-episode launcher.
  *
- * Compact one-row bookmark list: badge, title, episode, open button, icon actions.
- * Favorites sort first, then by updatedAt descending.
+ * Compact one-row list: badge, title, displayEpisode, open button, icon actions.
  */
-
-import { buildOpenUrl, buildPathForEpisode, getBookmarkPath } from './parser.js';
 
 /** @type {number} */
 let toastCounter = 0;
@@ -68,6 +65,8 @@ export function badgeColorFromWorkId(workId) {
  * @returns {string}
  */
 export function badgeLabel(bookmark) {
+  const nick = (bookmark.nickname || '').trim();
+  if (nick) return nick.slice(0, 4);
   const title = (bookmark.title || '').trim();
   if (title) return title.charAt(0);
   const id = String(bookmark.workId || '');
@@ -83,7 +82,7 @@ export function badgeLabel(bookmark) {
 export function filterBookmarks(bookmarks, query) {
   return bookmarks
     .filter((b) =>
-      (b.title + b.memo + b.workId + b.episodeId + b.category + (b.path || ''))
+      (b.title + b.nickname + b.memo + b.workId + b.episodeId + b.displayEpisode + b.category + (b.path || ''))
         .toLowerCase()
         .includes(query)
     )
@@ -95,25 +94,51 @@ export function filterBookmarks(bookmarks, query) {
 }
 
 /**
+ * User-facing episode label, or placeholder when unset.
+ * @param {object} bookmark
+ * @returns {string}
+ */
+export function episodeDisplayLabel(bookmark) {
+  const label = (bookmark.displayEpisode || '').trim();
+  return label || '회차 미입력';
+}
+
+/**
+ * Short date for list subtitle.
+ * @param {string} iso
+ * @returns {string}
+ */
+export function formatUpdatedAtShort(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' });
+}
+
+/**
  * Build compact row HTML for a bookmark.
  * @param {object} bookmark
  * @param {number | null} siteNumber
  * @returns {string}
  */
-export function buildCardHtml(bookmark, _expandedHistory, siteNumber) {
+export function buildCardHtml(bookmark, siteNumber) {
   const id = esc(bookmark.id);
   const color = bookmark.badgeColor || badgeColorFromWorkId(bookmark.workId);
   const label = esc(badgeLabel(bookmark));
   const favClass = bookmark.favorite ? 'bm-icon active' : 'bm-icon';
   const favIcon = bookmark.favorite ? '★' : '☆';
+  const episodeText = esc(episodeDisplayLabel(bookmark));
+  const episodeClass = (bookmark.displayEpisode || '').trim() ? 'bm-ep bm-ep-tap' : 'bm-ep bm-ep-tap bm-ep-empty';
+  const updated = esc(formatUpdatedAtShort(bookmark.updatedAt));
+  const subtitle = updated ? `${episodeText} · ${updated}` : episodeText;
 
   return `
   <div class="bm-badge" style="background:${esc(color)}" aria-hidden="true">${label}</div>
   <div class="bm-info">
     <div class="bm-title">${esc(bookmark.title)}</div>
-    <div class="bm-ep">${esc(bookmark.episodeId)}화</div>
+    <button type="button" class="${episodeClass}" onclick="handleQuickEditEpisode('${id}')" title="탭하여 회차 수정">${subtitle}</button>
   </div>
-  <button class="bm-open" onclick="handleLaunch('current','${id}')" title="열기">열기</button>
+  <button class="bm-open" onclick="handleOpenSaved('${id}')" title="저장된 화 열기">저장된 화 열기</button>
   <button class="bm-site-plus" onclick="handleLaunchSitePlus('${id}')" title="사이트 번호 +1 후 열기">+번호</button>
   <div class="bm-icons">
     <button class="${favClass}" onclick="handleToggleFavorite('${id}')" title="즐겨찾기">${favIcon}</button>
@@ -129,7 +154,7 @@ export function buildCardHtml(bookmark, _expandedHistory, siteNumber) {
  * @returns {string}
  */
 function cardStateKey(bookmark, siteNumber) {
-  return `${bookmark.updatedAt}|${bookmark.favorite}|${bookmark.title}|${bookmark.episodeId}|${bookmark.path}|${siteNumber}`;
+  return `${bookmark.updatedAt}|${bookmark.favorite}|${bookmark.title}|${bookmark.nickname}|${bookmark.displayEpisode}|${bookmark.episodeId}|${bookmark.path}|${siteNumber}`;
 }
 
 /**
@@ -139,7 +164,7 @@ function cardStateKey(bookmark, siteNumber) {
  * @param {number | null} siteNumber
  * @returns {HTMLElement}
  */
-function createOrUpdateCard(bookmark, expandedHistory, siteNumber) {
+function createOrUpdateCard(bookmark, siteNumber) {
   const cardId = `bm-${bookmark.id}`;
   const stateKey = cardStateKey(bookmark, siteNumber);
   let card = document.getElementById(cardId);
@@ -148,13 +173,13 @@ function createOrUpdateCard(bookmark, expandedHistory, siteNumber) {
     card = document.createElement('div');
     card.id = cardId;
     card.className = 'bm-row';
-    card.innerHTML = buildCardHtml(bookmark, expandedHistory, siteNumber);
+    card.innerHTML = buildCardHtml(bookmark, siteNumber);
     cardRenderState.set(bookmark.id, stateKey);
     return card;
   }
 
   if (cardRenderState.get(bookmark.id) !== stateKey) {
-    card.innerHTML = buildCardHtml(bookmark, expandedHistory, siteNumber);
+    card.innerHTML = buildCardHtml(bookmark, siteNumber);
     cardRenderState.set(bookmark.id, stateKey);
   }
 
@@ -176,7 +201,7 @@ function buildEmptyHtml(hasAnyBookmarks) {
  * @param {Set<string>} expandedHistory
  * @param {number | null} siteNumber
  */
-export function renderList(bookmarks, expandedHistory, siteNumber) {
+export function renderList(bookmarks, siteNumber) {
   const query = getSearchQuery();
   const filtered = filterBookmarks(bookmarks, query);
   const list = document.getElementById('list');
@@ -188,7 +213,7 @@ export function renderList(bookmarks, expandedHistory, siteNumber) {
   }
 
   const filteredIds = new Set(filtered.map((b) => b.id));
-  const cards = filtered.map((b) => createOrUpdateCard(b, expandedHistory, siteNumber));
+  const cards = filtered.map((b) => createOrUpdateCard(b, siteNumber));
 
   list.querySelectorAll('.bm-row').forEach((node) => {
     const id = node.id.replace(/^bm-/, '');
@@ -230,6 +255,8 @@ export function setAutoFindLoading(loading) {
 const FORM_FIELD_IDS = [
   'urlInput',
   'fTitle',
+  'fNickname',
+  'fDisplayEpisode',
   'fCategory',
   'fDomain',
   'fWorkId',
@@ -247,7 +274,9 @@ export function fillForm(parsed) {
   document.getElementById('fCategory').value = parsed.category || '';
   document.getElementById('fWorkId').value = parsed.workId || '';
   document.getElementById('fEpisodeId').value = parsed.episodeId || '';
-  document.getElementById('fDomain').value = parsed.domain || '';
+  document.getElementById('fDomain').value = parsed.domain || parsed.host || '';
+  document.getElementById('fTitle').value = parsed.workId ? `webtoons-${parsed.workId}` : '';
+  document.getElementById('fNickname').value = '';
   if (parsed.url) document.getElementById('urlInput').value = parsed.url;
 }
 
@@ -262,6 +291,8 @@ export function resetFormUi() {
 export function populateEditForm(bookmark, url) {
   document.getElementById('urlInput').value = url;
   document.getElementById('fTitle').value = bookmark.title;
+  document.getElementById('fNickname').value = bookmark.nickname || '';
+  document.getElementById('fDisplayEpisode').value = bookmark.displayEpisode || '';
   document.getElementById('fCategory').value = bookmark.category;
   document.getElementById('fDomain').value = bookmark.domain;
   document.getElementById('fWorkId').value = bookmark.workId;
@@ -271,9 +302,18 @@ export function populateEditForm(bookmark, url) {
   document.getElementById('saveBtn').textContent = '수정 완료';
 }
 
+export function focusDisplayEpisodeField() {
+  const input = document.getElementById('fDisplayEpisode');
+  if (!input) return;
+  input.focus();
+  input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
 export function readFormValues() {
   return {
     title: document.getElementById('fTitle').value.trim(),
+    nickname: document.getElementById('fNickname').value.trim(),
+    displayEpisode: document.getElementById('fDisplayEpisode').value.trim(),
     domain: document.getElementById('fDomain').value.trim(),
     category: document.getElementById('fCategory').value.trim(),
     workId: document.getElementById('fWorkId').value.trim(),
@@ -301,8 +341,22 @@ export function copyToClipboard(text) {
     .catch(() => toast('클립보드 복사 실패', 'info'));
 }
 
-export function clearShareUrlInput() {
-  document.getElementById('shareUrl').value = '';
+export function clearPasteUrlInput() {
+  const input = document.getElementById('pasteUrl');
+  if (input) input.value = '';
+}
+
+export function focusPasteInput() {
+  const input = document.getElementById('pasteUrl');
+  if (!input) return;
+  input.focus();
+  input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+export function setAdvancedPanelOpen(isOpen) {
+  document.getElementById('advancedContent')?.classList.toggle('open', isOpen);
+  const arrow = document.getElementById('advancedArrow');
+  if (arrow) arrow.textContent = isOpen ? '▲' : '▼';
 }
 
 export function syncSiteNumberInput(siteNumber) {
@@ -320,6 +374,3 @@ export function readSiteNumberInput() {
 export function clearBulkDomainInput() {
   document.getElementById('bulkDomain').value = '';
 }
-
-/** Build history open URL using current site number. Used by launcher when recording visits. */
-export { buildOpenUrl, buildPathForEpisode, getBookmarkPath };
