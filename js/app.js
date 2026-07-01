@@ -16,7 +16,7 @@ import {
   findBookmarkByWork,
   defaultWorkTitle,
   isValidNickname,
-} from './parser.js?v=2.0.7';
+} from './parser.js?v=2.0.8';
 import {
   loadBookmarks,
   saveBookmarks,
@@ -27,11 +27,11 @@ import {
   parseImportJson,
   initSettings,
   setCurrentSiteNumber,
-} from './storage.js?v=2.0.7';
-import { openSaved, openInNewTab } from './launcher.js?v=2.0.7';
-import { findWorkingSiteNumber } from './site-finder.js?v=2.0.7';
-import { APP_VERSION, APP_VERSION_LABEL } from './version.js?v=2.0.7';
-import { checkForUpdate, applyUpdate, showUpdateBanner } from './updater.js?v=2.0.7';
+} from './storage.js?v=2.0.8';
+import { openSaved, openInNewTab } from './launcher.js?v=2.0.8';
+import { findWorkingSiteNumber } from './site-finder.js?v=2.0.8';
+import { APP_VERSION, APP_VERSION_LABEL } from './version.js?v=2.0.8';
+import { checkForUpdate, applyUpdate, showUpdateBanner } from './updater.js?v=2.0.8';
 import {
   toast,
   renderList,
@@ -52,7 +52,7 @@ import {
   focusDisplayEpisodeField,
   normalizeDisplayEpisode,
   clearRenderCache,
-} from './ui.js?v=2.0.7';
+} from './ui.js?v=2.0.8';
 
 /** @type {Array} In-memory bookmark store */
 let data = [];
@@ -165,7 +165,7 @@ function importWebtoonUrl(rawUrl) {
   const trimmed = (rawUrl || '').trim();
   if (!trimmed) return { status: 'empty' };
 
-  const parsed = parseClipboardWebtoonUrl(trimmed);
+  const parsed = parseClipboardWebtoonUrl(trimmed) || parseWebtoonUrl(trimmed);
   if (!parsed) return { status: 'invalid' };
 
   applySiteNumberFromParsed(parsed);
@@ -189,11 +189,11 @@ function importWebtoonUrl(rawUrl) {
  */
 function showImportResult(result) {
   if (result.status === 'empty') {
-    toast('웹툰 주소를 붙여넣어주세요.', 'info');
+    toast('복사된 웹툰 링크가 없어요.', 'info');
     return;
   }
   if (result.status === 'invalid') {
-    toast('웹툰 링크 형식이 아니에요.', 'info');
+    toast('웹툰 링크가 아니에요.', 'info');
     return;
   }
   if (result.status === 'already') {
@@ -201,20 +201,10 @@ function showImportResult(result) {
     return;
   }
   if (result.isNew) {
-    toast(`"${result.title}" 저장됨 — 회차를 탭해 실제 회차를 입력하세요.`, 'info');
+    toast(`"${result.title}" 저장됨`);
     return;
   }
   toast(`"${result.title}" 회차 저장됨`);
-}
-
-/**
- * Ensure the advanced manual section is visible.
- */
-function ensureAdvancedOpen() {
-  if (!advancedOpen) {
-    advancedOpen = true;
-    setAdvancedPanelOpen(true);
-  }
 }
 
 /**
@@ -244,35 +234,6 @@ function parseUrlIntoForm(raw, options = {}) {
 }
 
 /**
- * Prepare the add/edit form after a clipboard URL is parsed.
- * @param {object} parsed
- * @param {string} rawUrl
- */
-function prepareFormFromClipboard(parsed, rawUrl) {
-  ensureAdvancedOpen();
-
-  const existing = findBookmarkByWork(data, parsed);
-
-  if (existing) {
-    updateBookmarkFromParsed(existing, parsed, rawUrl);
-    persistAndRender();
-    editingId = existing.id;
-    populateEditForm(
-      existing,
-      currentSiteNumber != null
-        ? buildBookmarkOpenUrl(existing, currentSiteNumber)
-        : rawUrl
-    );
-    return;
-  }
-
-  editingId = null;
-  resetFormUi();
-  parseUrlIntoForm(rawUrl);
-  document.getElementById('fDisplayEpisode').value = '';
-}
-
-/**
  * Save from the main paste input.
  */
 function handlePasteSave() {
@@ -285,38 +246,33 @@ function handlePasteSave() {
 }
 
 /**
- * Read clipboard, fill the URL input, parse, and focus 실제 회차.
+ * Read clipboard text (user gesture required on iOS).
+ * @returns {Promise<string>}
+ */
+async function readClipboardText() {
+  try {
+    if (navigator.clipboard?.readText) {
+      return await navigator.clipboard.readText();
+    }
+  } catch {
+    /* Safari PWA may block clipboard access */
+  }
+  return '';
+}
+
+/**
+ * Read clipboard and save webtoon URL immediately.
  */
 async function handleClipboardImport() {
-  let text = '';
+  const trimmed = (await readClipboardText()).trim();
 
-  try {
-    if (!navigator.clipboard?.readText) {
-      toast('복사된 웹툰 링크가 없어요.', 'info');
-      return;
-    }
-    text = await navigator.clipboard.readText();
-  } catch {
-    toast('복사된 웹툰 링크가 없어요.', 'info');
-    return;
-  }
-
-  const trimmed = (text || '').trim();
   if (!trimmed) {
     toast('복사된 웹툰 링크가 없어요.', 'info');
     return;
   }
 
-  const parsed = parseWebtoonUrl(trimmed);
-  if (!parsed) {
-    toast('웹툰 링크가 아니에요.', 'info');
-    return;
-  }
-
-  prepareFormFromClipboard(parsed, trimmed);
-  scrollToForm();
-  focusDisplayEpisodeField();
-  toast('웹툰 링크를 불러왔어요.');
+  const result = importWebtoonUrl(trimmed);
+  showImportResult(result);
 }
 
 /**

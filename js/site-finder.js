@@ -5,7 +5,7 @@
  * DNS/network failures are treated as non-working; opaque fetch success counts as reachable.
  */
 
-import { buildBlacktoonDomain } from './parser.js?v=2.0.7';
+import { buildBlacktoonDomain } from './parser.js?v=2.0.8';
 
 const PROBE_TIMEOUT_MS = 5000;
 const DEFAULT_RANGE = 10;
