@@ -15,8 +15,12 @@ import {
   extractSiteNumber,
   findBookmarkByWork,
   defaultWorkTitle,
+  shouldReplaceImportedTitle,
+  sanitizeImportedTitle,
+  parseShortcutClipboardJson,
+  parseShortcutPageTitle,
   isValidNickname,
-} from './parser.js?v=2.0.9';
+} from './parser.js?v=2.1.2';
 import {
   loadBookmarks,
   saveBookmarks,
@@ -27,11 +31,11 @@ import {
   parseImportJson,
   initSettings,
   setCurrentSiteNumber,
-} from './storage.js?v=2.0.9';
-import { openSaved, openInNewTab } from './launcher.js?v=2.0.9';
-import { findWorkingSiteNumber } from './site-finder.js?v=2.0.9';
-import { APP_VERSION, APP_VERSION_LABEL } from './version.js?v=2.0.9';
-import { checkForUpdate, applyUpdate, showUpdateBanner } from './updater.js?v=2.0.9';
+} from './storage.js?v=2.1.2';
+import { openSaved, openInNewTab } from './launcher.js?v=2.1.2';
+import { findWorkingSiteNumber } from './site-finder.js?v=2.1.2';
+import { APP_VERSION, APP_VERSION_LABEL } from './version.js?v=2.1.2';
+import { checkForUpdate, applyUpdate, showUpdateBanner } from './updater.js?v=2.1.2';
 import {
   toast,
   renderList,
@@ -54,7 +58,7 @@ import {
   clearRenderCache,
   focusPasteInput,
   setPasteImportActive,
-} from './ui.js?v=2.0.9';
+} from './ui.js?v=2.1.2';
 
 /** @type {Array} In-memory bookmark store */
 let data = [];
@@ -159,16 +163,47 @@ function createNewBookmarkFromParsed(parsed, rawUrl) {
 }
 
 /**
- * Import a webtoon URL (clipboard, paste input, shortcuts).
- * @param {string} rawUrl
- * @returns {{ status: 'empty' | 'invalid' | 'already' | 'success', title?: string, isNew?: boolean }}
+ * Decode a URL parameter value (handles single/double encoding).
+ * @param {string | null | undefined} value
+ * @returns {string}
  */
-function importWebtoonUrl(rawUrl) {
+function decodeParam(value) {
+  if (value == null) return '';
+  let result = String(value).trim();
+  if (!result) return '';
+
+  for (let i = 0; i < 3; i += 1) {
+    try {
+      const next = decodeURIComponent(result);
+      if (next === result) break;
+      result = next;
+    } catch {
+      break;
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Import a webtoon URL, optionally applying a page title from launch params.
+ * @param {string} rawUrl
+ * @param {string | null | undefined} rawTitle
+ * @returns {{ status: string, title?: string, isNew?: boolean, bookmarkId?: string }}
+ */
+function importWebtoonUrlWithTitle(rawUrl, rawTitle) {
   const trimmed = (rawUrl || '').trim();
   if (!trimmed) return { status: 'empty' };
 
   const parsed = parseClipboardWebtoonUrl(trimmed) || parseWebtoonUrl(trimmed);
   if (!parsed) return { status: 'invalid' };
+
+  const hasImportedTitle = rawTitle != null && String(rawTitle).trim() !== '';
+  const parsedPageTitle = hasImportedTitle
+    ? parseShortcutPageTitle(decodeParam(rawTitle))
+    : { workTitle: '', displayEpisode: '' };
+  const importedTitle = parsedPageTitle.workTitle;
+  const importedDisplayEpisode = parsedPageTitle.displayEpisode;
 
   applySiteNumberFromParsed(parsed);
   const existing = findBookmarkByWork(data, parsed);
@@ -176,13 +211,74 @@ function importWebtoonUrl(rawUrl) {
   if (existing) {
     const samePath = existing.path === parsed.path;
     applyParsedToBookmark(existing, parsed, trimmed);
+
+    if (importedTitle && shouldReplaceImportedTitle(existing.title)) {
+      existing.title = importedTitle;
+    }
+    if (importedDisplayEpisode) {
+      existing.displayEpisode = normalizeDisplayEpisode(
+        importedDisplayEpisode,
+        parsed.episodeId
+      );
+    }
+
     persistAndRender();
-    return { status: samePath ? 'already' : 'success', title: existing.title };
+    return {
+      status: samePath ? 'already' : 'success',
+      title: existing.title,
+      bookmarkId: existing.id,
+      isNew: false,
+    };
   }
 
-  const bookmark = createNewBookmarkFromParsed(parsed, trimmed);
+  const title = importedTitle || defaultWorkTitle(parsed.workId);
+  const now = new Date().toISOString();
+
+  const bookmark = createBookmark({
+    title,
+    nickname: '',
+    displayEpisode: normalizeDisplayEpisode(importedDisplayEpisode, parsed.episodeId),
+    favorite: false,
+    domain: parsed.host || parsed.domain || '',
+    category: parsed.category,
+    workId: parsed.workId,
+    episodeId: parsed.episodeId,
+    path: parsed.path,
+    lastUrl: trimmed,
+    updatedAt: now,
+    history: [],
+  });
+
+  data.unshift(bookmark);
   persistAndRender();
-  return { status: 'success', title: bookmark.title, isNew: true };
+  return {
+    status: 'success',
+    title: bookmark.title,
+    bookmarkId: bookmark.id,
+    isNew: true,
+  };
+}
+
+/**
+ * Import clipboard/pasted text (Shortcut JSON or plain URL).
+ * @param {string} text
+ * @returns {{ status: string, title?: string, isNew?: boolean, bookmarkId?: string }}
+ */
+function importFromClipboardText(text) {
+  const shortcut = parseShortcutClipboardJson(text);
+  if (shortcut) {
+    return importWebtoonUrlWithTitle(shortcut.url, shortcut.title);
+  }
+  return importWebtoonUrl(text);
+}
+
+/**
+ * Import a webtoon URL (clipboard, paste input, shortcuts).
+ * @param {string} rawUrl
+ * @returns {{ status: string, title?: string, isNew?: boolean, bookmarkId?: string }}
+ */
+function importWebtoonUrl(rawUrl) {
+  return importWebtoonUrlWithTitle(rawUrl, null);
 }
 
 /**
@@ -240,8 +336,7 @@ function parseUrlIntoForm(raw, options = {}) {
  */
 function handlePasteSave() {
   const raw = document.getElementById('pasteUrl')?.value ?? '';
-  const result = importWebtoonUrl(raw);
-  showImportResult(result);
+  const result = saveFromUrlText(raw, { promptEpisode: true });
   if (result.status === 'success' || result.status === 'already') {
     clearPasteUrlInput();
   }
@@ -254,13 +349,28 @@ let pasteImportArmed = false;
 let clipboardPrefetch = null;
 
 /**
+ * Open episode edit prompt after an existing work is updated via URL paste.
+ * @param {{ status: string, bookmarkId?: string, isNew?: boolean }} result
+ */
+function promptEpisodeAfterImport(result) {
+  if (result.status !== 'success' || result.isNew || !result.bookmarkId) return;
+  const bookmark = data.find((x) => x.id === result.bookmarkId);
+  if ((bookmark?.displayEpisode || '').trim()) return;
+  handleQuickEditEpisode(result.bookmarkId);
+}
+
+/**
  * Save a URL string and show feedback.
  * @param {string} raw
- * @returns {{ status: string, title?: string, isNew?: boolean }}
+ * @param {{ promptEpisode?: boolean }} [options]
+ * @returns {{ status: string, title?: string, isNew?: boolean, bookmarkId?: string }}
  */
-function saveFromUrlText(raw) {
-  const result = importWebtoonUrl(raw);
+function saveFromUrlText(raw, options = {}) {
+  const result = importFromClipboardText(raw);
   showImportResult(result);
+  if (options.promptEpisode) {
+    promptEpisodeAfterImport(result);
+  }
   return result;
 }
 
@@ -372,7 +482,7 @@ function setupWebtoonImportUi() {
       const raw = input.value.trim();
       if (!raw) return;
 
-      const result = saveFromUrlText(raw);
+      const result = saveFromUrlText(raw, { promptEpisode: true });
       if (result.status !== 'invalid' && result.status !== 'empty') {
         clearPasteUrlInput();
         disarmPasteImport();
@@ -729,18 +839,29 @@ function extractLaunchUrl(params) {
 }
 
 /**
- * Handle ?url= query param from iPhone Shortcuts / Share Target.
+ * Handle launch query params (?wurl=&wtitle= or legacy ?url=).
  */
 function handleUrlParam() {
   const params = new URLSearchParams(location.search);
+  const wurl = params.get('wurl');
+
+  if (wurl?.trim()) {
+    history.replaceState({}, '', location.pathname);
+    const decodedUrl = decodeParam(wurl);
+    const decodedTitle = params.has('wtitle') ? decodeParam(params.get('wtitle')) : null;
+    const result = importWebtoonUrlWithTitle(decodedUrl, decodedTitle);
+    showImportResult(result);
+    return;
+  }
+
   const raw = extractLaunchUrl(params);
   if (!raw) {
     handleClipboardImport();
     return;
-}
+  }
+
   history.replaceState({}, '', location.pathname);
-  const decoded = decodeURIComponent(raw);
-  saveFromUrlText(decoded);
+  saveFromUrlText(decodeParam(raw));
 }
 
 /* ── Expose handlers for inline onclick attributes ── */
@@ -783,7 +904,7 @@ function init() {
   handleUrlParam();
   render();
 
-  setShortcutUrlText(`${location.origin}${location.pathname}?url=[현재 URL]`);
+  setShortcutUrlText(`${location.origin}${location.pathname}?wurl=[현재 URL]&wtitle=[페이지 제목]`);
 
   const footer = document.querySelector('.app-footer');
   if (footer) footer.textContent = APP_VERSION_LABEL;
