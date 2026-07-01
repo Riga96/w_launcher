@@ -734,8 +734,10 @@ function extractLaunchUrl(params) {
 function handleUrlParam() {
   const params = new URLSearchParams(location.search);
   const raw = extractLaunchUrl(params);
-  if (!raw) return;
-
+  if (!raw) {
+    handleClipboardImport();
+    return;
+}
   history.replaceState({}, '', location.pathname);
   const decoded = decodeURIComponent(raw);
   saveFromUrlText(decoded);
