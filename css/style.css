@@ -227,16 +227,16 @@ button:active { opacity: 0.75; }
   white-space: nowrap;
 }
 
-.bm-site-plus {
+.bm-ep-edit {
   flex-shrink: 0;
   height: 34px;
   padding: 0 8px;
   border-radius: 8px;
   background: rgba(17,24,39,0.85);
-  color: var(--muted);
+  color: var(--accent);
   font-size: 10px;
-  font-weight: 600;
-  border: 1px solid var(--border);
+  font-weight: 700;
+  border: 1px solid var(--accent-border);
   white-space: nowrap;
 }
 

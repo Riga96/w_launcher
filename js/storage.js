@@ -9,7 +9,7 @@ import {
   buildPath,
   extractSiteNumber,
   normDomain,
-} from './parser.js?v=2.0.6';
+} from './parser.js?v=2.0.7';
 
 /** @type {string} Unchanged storage key — do not rename. */
 export const STORAGE_KEY = 'webtoon_bookmarks_v1';

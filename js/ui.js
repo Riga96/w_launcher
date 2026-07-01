@@ -179,7 +179,7 @@ export function buildCardHtml(bookmark, siteNumber) {
     <button type="button" class="${episodeClass}" onclick="handleQuickEditEpisode('${id}')" title="탭하여 회차 수정">${episodeText}</button>
   </div>
   <button class="bm-open" onclick="handleOpenSaved('${id}')" title="저장된 화 열기">저장된 화 열기</button>
-  <button class="bm-site-plus" onclick="handleLaunchSitePlus('${id}')" title="사이트 번호 +1 후 열기">+번호</button>
+  <button type="button" class="bm-ep-edit" onclick="handleQuickEditEpisode('${id}')" title="실제 회차 수정">회차 수정</button>
   <div class="bm-icons">
     <button class="${favClass}" onclick="handleToggleFavorite('${id}')" title="즐겨찾기">${favIcon}</button>
     <button class="bm-icon" onclick="handleEdit('${id}')" title="수정">✏</button>

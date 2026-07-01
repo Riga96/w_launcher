@@ -16,7 +16,7 @@ import {
   findBookmarkByWork,
   defaultWorkTitle,
   isValidNickname,
-} from './parser.js?v=2.0.6';
+} from './parser.js?v=2.0.7';
 import {
   loadBookmarks,
   saveBookmarks,
@@ -27,11 +27,11 @@ import {
   parseImportJson,
   initSettings,
   setCurrentSiteNumber,
-} from './storage.js?v=2.0.6';
-import { openSaved, openInNewTab } from './launcher.js?v=2.0.6';
-import { findWorkingSiteNumber } from './site-finder.js?v=2.0.6';
-import { APP_VERSION, APP_VERSION_LABEL } from './version.js?v=2.0.6';
-import { checkForUpdate, applyUpdate, showUpdateBanner } from './updater.js?v=2.0.6';
+} from './storage.js?v=2.0.7';
+import { openSaved, openInNewTab } from './launcher.js?v=2.0.7';
+import { findWorkingSiteNumber } from './site-finder.js?v=2.0.7';
+import { APP_VERSION, APP_VERSION_LABEL } from './version.js?v=2.0.7';
+import { checkForUpdate, applyUpdate, showUpdateBanner } from './updater.js?v=2.0.7';
 import {
   toast,
   renderList,
@@ -52,7 +52,7 @@ import {
   focusDisplayEpisodeField,
   normalizeDisplayEpisode,
   clearRenderCache,
-} from './ui.js?v=2.0.6';
+} from './ui.js?v=2.0.7';
 
 /** @type {Array} In-memory bookmark store */
 let data = [];
@@ -554,25 +554,6 @@ function handleOpenSaved(id) {
 }
 
 /**
- * Increment site number and open the bookmark.
- * @param {string} id
- */
-function handleLaunchSitePlus(id) {
-  const bookmark = data.find((x) => x.id === id);
-  if (!bookmark || !requireSiteNumber()) return;
-
-  currentSiteNumber += 1;
-  setCurrentSiteNumber(currentSiteNumber);
-  syncSiteNumberInput(currentSiteNumber);
-
-  const result = openSaved(bookmark, currentSiteNumber);
-  if (!result) return;
-
-  openInNewTab(result.url);
-  toast(`+${currentSiteNumber} — "${bookmark.title}" 열기`);
-}
-
-/**
  * Apply a new domain to all bookmarks and update site number if blacktoon.
  */
 function handleBulkDomain() {
@@ -693,7 +674,6 @@ const publicApi = {
   handleQuickEditEpisode,
   handleDelete,
   handleOpenSaved,
-  handleLaunchSitePlus,
   handleToggleFavorite,
   handleBulkDomain,
   handleBackup,
