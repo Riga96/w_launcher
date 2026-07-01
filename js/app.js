@@ -48,7 +48,6 @@ import {
   syncSiteNumberInput,
   readSiteNumberInput,
   setAutoFindLoading,
-  focusPasteInput,
   setAdvancedPanelOpen,
   focusDisplayEpisodeField,
 } from './ui.js';
@@ -207,6 +206,71 @@ function showImportResult(result) {
 }
 
 /**
+ * Ensure the advanced manual section is visible.
+ */
+function ensureAdvancedOpen() {
+  if (!advancedOpen) {
+    advancedOpen = true;
+    setAdvancedPanelOpen(true);
+  }
+}
+
+/**
+ * Parse a URL and fill form fields (same logic as the 분석 button).
+ * @param {string} raw
+ * @param {{ preserveTitle?: boolean }} [options]
+ * @returns {object | null}
+ */
+function parseUrlIntoForm(raw, options = {}) {
+  const trimmed = (raw || '').trim();
+  const parsed = parseWebtoonUrl(trimmed);
+  if (!parsed) return null;
+
+  document.getElementById('urlInput').value = trimmed;
+  document.getElementById('fDomain').value = parsed.host;
+  document.getElementById('fCategory').value = parsed.category;
+  document.getElementById('fWorkId').value = parsed.workId;
+  document.getElementById('fEpisodeId').value = parsed.episodeId;
+
+  if (!options.preserveTitle) {
+    document.getElementById('fTitle').value = defaultWorkTitle(parsed.workId);
+    document.getElementById('fNickname').value = '';
+  }
+
+  applySiteNumberFromParsed(parsed);
+  return parsed;
+}
+
+/**
+ * Prepare the add/edit form after a clipboard URL is parsed.
+ * @param {object} parsed
+ * @param {string} rawUrl
+ */
+function prepareFormFromClipboard(parsed, rawUrl) {
+  ensureAdvancedOpen();
+
+  const existing = findBookmarkByWork(data, parsed);
+
+  if (existing) {
+    updateBookmarkFromParsed(existing, parsed, rawUrl);
+    persistAndRender();
+    editingId = existing.id;
+    populateEditForm(
+      existing,
+      currentSiteNumber != null
+        ? buildBookmarkOpenUrl(existing, currentSiteNumber)
+        : rawUrl
+    );
+    return;
+  }
+
+  editingId = null;
+  resetFormUi();
+  parseUrlIntoForm(rawUrl);
+  document.getElementById('fDisplayEpisode').value = '';
+}
+
+/**
  * Save from the main paste input.
  */
 function handlePasteSave() {
@@ -219,36 +283,38 @@ function handlePasteSave() {
 }
 
 /**
- * Read clipboard and import a webtoon URL (best-effort; paste input is fallback).
+ * Read clipboard, fill the URL input, parse, and focus 실제 회차.
  */
 async function handleClipboardImport() {
   let text = '';
 
   try {
-    if (navigator.clipboard?.readText) {
-      text = await navigator.clipboard.readText();
+    if (!navigator.clipboard?.readText) {
+      toast('복사된 웹툰 링크가 없어요.', 'info');
+      return;
     }
+    text = await navigator.clipboard.readText();
   } catch {
-    /* Safari PWA — fall through to paste input */
+    toast('복사된 웹툰 링크가 없어요.', 'info');
+    return;
   }
 
   const trimmed = (text || '').trim();
-  if (trimmed) {
-    const pasteInput = document.getElementById('pasteUrl');
-    if (pasteInput) pasteInput.value = trimmed;
-
-    const result = importWebtoonUrl(trimmed);
-    if (result.status !== 'invalid') {
-      showImportResult(result);
-      if (result.status === 'success' || result.status === 'already') {
-        clearPasteUrlInput();
-      }
-      return;
-    }
+  if (!trimmed) {
+    toast('복사된 웹툰 링크가 없어요.', 'info');
+    return;
   }
 
-  toast('아래 입력란에 붙여넣기 후 저장을 눌러주세요.', 'info');
-  focusPasteInput();
+  const parsed = parseWebtoonUrl(trimmed);
+  if (!parsed) {
+    toast('웹툰 링크가 아니에요.', 'info');
+    return;
+  }
+
+  prepareFormFromClipboard(parsed, trimmed);
+  scrollToForm();
+  focusDisplayEpisodeField();
+  toast('웹툰 링크를 불러왔어요.');
 }
 
 /**
@@ -311,18 +377,12 @@ function handleToggleFavorite(id) {
  * Parse URL from the form's URL input into fields.
  */
 function handleParseUrl() {
-  const parsed = parseWebtoonUrl(document.getElementById('urlInput').value);
+  const parsed = parseUrlIntoForm(document.getElementById('urlInput').value, {
+    preserveTitle: !!editingId,
+  });
   if (!parsed) {
     alert('URL 형식을 확인해주세요.');
-    return;
   }
-  document.getElementById('fDomain').value = parsed.host;
-  document.getElementById('fCategory').value = parsed.category;
-  document.getElementById('fWorkId').value = parsed.workId;
-  document.getElementById('fEpisodeId').value = parsed.episodeId;
-  document.getElementById('fTitle').value = defaultWorkTitle(parsed.workId);
-  document.getElementById('fNickname').value = '';
-  applySiteNumberFromParsed(parsed);
 }
 
 /**
