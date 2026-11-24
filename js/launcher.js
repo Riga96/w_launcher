@@ -5,7 +5,7 @@
  * This module only opens the exact path stored on each bookmark.
  */
 
-import { buildOpenUrl, getBookmarkPath } from './parser.js?v=2.1.3';
+import { buildOpenUrl, getBookmarkPath } from './parser.js?v=2.1.4';
 
 /**
  * Build the open URL for a bookmark without modifying stored data.

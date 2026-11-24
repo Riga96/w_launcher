@@ -9,7 +9,8 @@ import {
   buildPath,
   extractSiteNumber,
   normDomain,
-} from './parser.js?v=2.1.3';
+  normalizeBaseUrl,
+} from './parser.js?v=2.1.4';
 
 /** @type {string} Unchanged storage key — do not rename. */
 export const STORAGE_KEY = 'webtoon_bookmarks_v1';
@@ -126,37 +127,18 @@ export function saveSettings(settings) {
  * @returns {number | null}
  */
 export function getCurrentSiteNumber() {
-  const { currentSiteNumber } = loadSettings();
-  return typeof currentSiteNumber === 'number' ? currentSiteNumber : null;
+  return normalizeBaseUrl(loadSettings().baseUrl);
 }
 
-/**
- * Set and persist the current blacktoon site number.
- * @param {number} siteNumber
- */
-export function setCurrentSiteNumber(siteNumber) {
-  saveSettings({ ...loadSettings(), currentSiteNumber: siteNumber });
+export function setCurrentSiteNumber(baseUrl) {
+  const normalized = normalizeBaseUrl(baseUrl);
+  if (normalized) saveSettings({ ...loadSettings(), baseUrl: normalized });
 }
 
-/**
- * Infer currentSiteNumber from bookmark domains if not yet set.
- * @param {Array} bookmarks
- * @returns {number | null}
- */
 export function inferSiteNumberFromBookmarks(bookmarks) {
-  for (const bookmark of bookmarks) {
-    const fromDomain = extractSiteNumber(normDomain(bookmark.domain));
-    if (fromDomain != null) return fromDomain;
-
-    if (bookmark.lastUrl) {
-      try {
-        const host = new URL(bookmark.lastUrl).hostname.replace(/^www\./i, '');
-        const fromLast = extractSiteNumber(host);
-        if (fromLast != null) return fromLast;
-      } catch {
-        /* ignore invalid lastUrl */
-      }
-    }
+  for (const bookmark of [...bookmarks].sort((a,b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))) {
+    const base = normalizeBaseUrl(bookmark.lastUrl || bookmark.domain);
+    if (base) return base;
   }
   return null;
 }
@@ -189,17 +171,11 @@ export function loadBookmarks() {
  */
 export function initSettings(bookmarks) {
   const settings = loadSettings();
-  if (typeof settings.currentSiteNumber === 'number') {
-    return settings.currentSiteNumber;
-  }
-
-  const inferred = inferSiteNumberFromBookmarks(bookmarks);
-  if (inferred != null) {
-    setCurrentSiteNumber(inferred);
-    return inferred;
-  }
-
-  return null;
+  const current = normalizeBaseUrl(settings.baseUrl);
+  if (current) return current;
+  const inferred = inferSiteNumberFromBookmarks(bookmarks) || (typeof settings.currentSiteNumber === 'number' ? `https://blacktoon${settings.currentSiteNumber}.com` : null);
+  if (inferred) setCurrentSiteNumber(inferred);
+  return inferred;
 }
 
 /**

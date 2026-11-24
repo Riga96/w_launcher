@@ -12,7 +12,7 @@ import {
   parseWebtoonUrl,
   parseClipboardWebtoonUrl,
   normDomain,
-  extractSiteNumber,
+  normalizeBaseUrl,
   findBookmarkByWork,
   defaultWorkTitle,
   shouldReplaceImportedTitle,
@@ -20,7 +20,7 @@ import {
   parseShortcutClipboardJson,
   parseShortcutPageTitle,
   isValidNickname,
-} from './parser.js?v=2.1.3';
+} from './parser.js?v=2.1.4';
 import {
   loadBookmarks,
   saveBookmarks,
@@ -31,11 +31,10 @@ import {
   parseImportJson,
   initSettings,
   setCurrentSiteNumber,
-} from './storage.js?v=2.1.3';
-import { openSaved, openInNewTab } from './launcher.js?v=2.1.3';
-import { findWorkingSiteNumber } from './site-finder.js?v=2.1.3';
-import { APP_VERSION, APP_VERSION_LABEL } from './version.js?v=2.1.3';
-import { checkForUpdate, applyUpdate, showUpdateBanner } from './updater.js?v=2.1.3';
+} from './storage.js?v=2.1.4';
+import { openSaved, openInNewTab } from './launcher.js?v=2.1.4';
+import { APP_VERSION, APP_VERSION_LABEL } from './version.js?v=2.1.4';
+import { checkForUpdate, applyUpdate, showUpdateBanner } from './updater.js?v=2.1.4';
 import {
   toast,
   renderList,
@@ -51,14 +50,13 @@ import {
   clearBulkDomainInput,
   syncSiteNumberInput,
   readSiteNumberInput,
-  setAutoFindLoading,
   setAdvancedPanelOpen,
   focusDisplayEpisodeField,
   normalizeDisplayEpisode,
   clearRenderCache,
   focusPasteInput,
   setPasteImportActive,
-} from './ui.js?v=2.1.3';
+} from './ui.js?v=2.1.4';
 
 /** @type {Array} In-memory bookmark store */
 let data = [];
@@ -88,18 +86,19 @@ function persistAndRender() {
 
 function requireSiteNumber() {
   if (currentSiteNumber == null) {
-    toast('현재 사이트 번호를 먼저 설정해주세요.', 'info');
+    toast('현재 사이트 주소를 먼저 설정해주세요.', 'info');
     return false;
   }
   return true;
 }
 
 function applySiteNumberFromParsed(parsed) {
-  if (parsed.siteNumber != null) {
-    currentSiteNumber = parsed.siteNumber;
-    setCurrentSiteNumber(parsed.siteNumber);
-    syncSiteNumberInput(parsed.siteNumber);
-  }
+  const base = normalizeBaseUrl(parsed.origin || parsed.lastUrl);
+  if (!base || base === currentSiteNumber) return;
+  if (currentSiteNumber && !confirm(`전체 작품의 기본 사이트 주소를 ${base}(으)로 변경할까요?`)) return;
+  currentSiteNumber = base;
+  setCurrentSiteNumber(base);
+  syncSiteNumberInput(base);
 }
 
 /**
@@ -540,45 +539,14 @@ function setupWebtoonImportUi() {
  * Save the site number from the settings input.
  */
 function handleSaveSiteNumber() {
-  const num = readSiteNumberInput();
-  if (num == null) {
-    toast('사이트 번호를 입력해주세요.', 'info');
-    return;
-  }
-  currentSiteNumber = num;
-  setCurrentSiteNumber(num);
+  const base = normalizeBaseUrl(readSiteNumberInput());
+  if (!base) { toast('올바른 사이트 주소를 입력해주세요.', 'info'); return; }
+  if (currentSiteNumber && currentSiteNumber !== base && !confirm('모든 작품의 기본 주소를 변경할까요?')) return;
+  currentSiteNumber = base;
+  setCurrentSiteNumber(base);
+  syncSiteNumberInput(base);
   render();
-  toast(`사이트 번호 ${num} 저장됨`);
-}
-
-/**
- * Auto-detect working blacktoon site number in range start..start+10.
- */
-async function handleAutoFindSiteNumber() {
-  const start = currentSiteNumber ?? readSiteNumberInput() ?? 415;
-
-  setAutoFindLoading(true);
-  try {
-    const { found, blocked } = await findWorkingSiteNumber(start);
-
-    if (blocked) {
-      toast('자동 확인이 막혔어요. 사이트 번호를 직접 입력해주세요.', 'info');
-      return;
-    }
-
-    if (found == null) {
-      toast('작동하는 사이트 번호를 찾지 못했어요.', 'info');
-      return;
-    }
-
-    currentSiteNumber = found;
-    setCurrentSiteNumber(found);
-    syncSiteNumberInput(found);
-    render();
-    toast(`사이트 번호를 ${found}로 변경했어요.`);
-  } finally {
-    setAutoFindLoading(false);
-  }
+  toast('사이트 주소 저장됨');
 }
 
 /**
@@ -634,17 +602,11 @@ function handleSave() {
   const resolvedDisplayEpisode = normalizeDisplayEpisode(displayEpisode, episodeId);
 
   const path = buildPath(category, workId, episodeId);
-  const siteFromDomain = extractSiteNumber(domain);
-  if (siteFromDomain != null) {
-    currentSiteNumber = siteFromDomain;
-    setCurrentSiteNumber(siteFromDomain);
-    syncSiteNumberInput(siteFromDomain);
-  }
-
+  const base = normalizeBaseUrl(rawDomain);
+  if (!base || !/^\/webtoons\/\d+\/\d+\.html$/i.test(path)) { alert('주소 또는 작품/회차 ID를 확인해주세요.'); return; }
+  if (!currentSiteNumber) { currentSiteNumber = base; setCurrentSiteNumber(base); syncSiteNumberInput(base); }
   const now = new Date().toISOString();
-  const openUrl = currentSiteNumber != null
-    ? buildOpenUrl(currentSiteNumber, path)
-    : `http://${domain}${path}`;
+  const openUrl = buildOpenUrl(base, path);
 
   if (editingId) {
     const bookmark = data.find((x) => x.id === editingId);
@@ -712,7 +674,7 @@ function handleEdit(id) {
     bookmark,
     currentSiteNumber != null
       ? buildBookmarkOpenUrl(bookmark, currentSiteNumber)
-      : bookmark.lastUrl || `http://${bookmark.domain}${bookmark.path}`
+      : bookmark.lastUrl || `${normalizeBaseUrl(bookmark.domain)}${bookmark.path}`
   );
   scrollToForm();
 }
@@ -774,23 +736,14 @@ function handleOpenSaved(id) {
  * Apply a new domain to all bookmarks and update site number if blacktoon.
  */
 function handleBulkDomain() {
-  const domain = normDomain(document.getElementById('bulkDomain').value);
-  if (!domain) {
-    alert('새 도메인을 입력해주세요.');
-    return;
-  }
-  if (!confirm('모든 저장 항목의 도메인을 바꿀까요?')) return;
-
-  const siteFromDomain = extractSiteNumber(domain);
-  if (siteFromDomain != null) {
-    currentSiteNumber = siteFromDomain;
-    setCurrentSiteNumber(siteFromDomain);
-    syncSiteNumberInput(siteFromDomain);
-  }
-
-  data = applyBulkDomain(data, domain);
-  persistAndRender();
+  const base = normalizeBaseUrl(document.getElementById('bulkDomain').value);
+  if (!base) { alert('올바른 새 사이트 주소를 입력해주세요.'); return; }
+  if (!confirm('모든 작품의 기본 주소를 바꿀까요?')) return;
+  currentSiteNumber = base;
+  setCurrentSiteNumber(base);
+  syncSiteNumberInput(base);
   clearBulkDomainInput();
+  render();
   toast('도메인 일괄 변경 완료');
 }
 
@@ -911,7 +864,6 @@ const publicApi = {
   handleClipboardImport,
   handlePasteSave,
   handleSaveSiteNumber,
-  handleAutoFindSiteNumber,
   handleParseUrl,
   handleSave,
   resetForm,

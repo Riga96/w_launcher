@@ -419,8 +419,7 @@ export function syncSiteNumberInput(siteNumber) {
 export function readSiteNumberInput() {
   const raw = document.getElementById('siteNumber')?.value.trim();
   if (!raw) return null;
-  const num = parseInt(raw, 10);
-  return isNaN(num) ? null : num;
+  return raw;
 }
 
 export function clearBulkDomainInput() {

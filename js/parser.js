@@ -43,9 +43,20 @@ export function buildPath(category, workId, episodeId) {
  * @param {string} path
  * @returns {string}
  */
-export function buildOpenUrl(siteNumber, path) {
-  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
-  return `http://${buildBlacktoonDomain(siteNumber)}${normalizedPath}`;
+export function normalizeBaseUrl(value) {
+  try {
+    const raw = String(value ?? '').trim();
+    if (!raw) return null;
+    const u = new URL(/^https?:\/\//i.test(raw) ? raw : `https://${raw}`);
+    if (!['http:', 'https:'].includes(u.protocol) || u.username || u.password || !u.hostname.includes('.')) return null;
+    return u.origin;
+  } catch { return null; }
+}
+
+export function buildOpenUrl(baseUrl, path) {
+  const base = normalizeBaseUrl(baseUrl);
+  if (!base || !/^\/webtoons\/\d+\/\d+\.html$/i.test(path)) throw new Error('Invalid episode URL');
+  return base + path;
 }
 
 /**
@@ -88,7 +99,9 @@ export function buildPathForEpisode(bookmark, episodeId) {
 export function parseWebtoonUrl(raw) {
   try {
     const url = new URL(raw.trim());
-    const host = url.hostname.replace(/^www\./i, '');
+    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) return null;
+    if (!/^\/webtoons\/\d+\/\d+\.html$/i.test(url.pathname)) return null;
+    const host = url.host;
     const segments = url.pathname.split('/').filter(Boolean);
     const category = segments[0] || '';
     const workId = segments[1] || '';
@@ -99,13 +112,14 @@ export function parseWebtoonUrl(raw) {
     const path = buildPath(category, workId, episodeId);
 
     return {
+      origin: url.origin,
       domain: host,
       host,
       siteNumber,
       category,
       workId,
       episodeId,
-      path,
+      path: url.pathname,
       lastUrl: raw.trim(),
     };
   } catch {
@@ -122,7 +136,9 @@ export function parseWebtoonUrl(raw) {
 export function parseClipboardWebtoonUrl(raw) {
   try {
     const url = new URL(raw.trim());
-    const host = url.hostname.replace(/^www\./i, '');
+    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) return null;
+    if (!/^\/webtoons\/\d+\/\d+\.html$/i.test(url.pathname)) return null;
+    const host = url.host;
     const segments = url.pathname.split('/').filter(Boolean);
     if (segments.length !== 3) return null;
 
@@ -136,13 +152,14 @@ export function parseClipboardWebtoonUrl(raw) {
     const path = buildPath('webtoons', workId, episodeId);
 
     return {
+      origin: url.origin,
       domain: host,
       host,
       siteNumber,
       category: 'webtoons',
       workId,
       episodeId,
-      path,
+      path: url.pathname,
       lastUrl: raw.trim(),
     };
   } catch {
@@ -224,7 +241,7 @@ function stripSiteTitleSuffix(title) {
   const text = (title || '').trim();
   if (!text) return '';
 
-  const idx = text.search(/\s+BlackToon/i);
+  const idx = text.search(/\s+(?:BlackToon|GRToon|블랙툰|그린툰)(?:\s|$)/i);
   if (idx === -1) return text;
   return text.slice(0, idx).trim();
 }
@@ -288,6 +305,5 @@ export function findBookmarkByWork(bookmarks, parsed) {
 export function makeUrl(domain, category, workId, episodeId) {
   const siteNumber = extractSiteNumber(domain.replace(/^www\./i, ''));
   const path = buildPath(category, workId, episodeId);
-  if (siteNumber != null) return buildOpenUrl(siteNumber, path);
-  return `http://${domain.replace(/^www\./i, '')}${path}`;
+  return buildOpenUrl(normalizeBaseUrl(domain), path);
 }

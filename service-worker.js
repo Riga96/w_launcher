@@ -5,7 +5,7 @@
  * Old caches are cleared on activate.
  */
 
-const CACHE_NAME = 'webtoon-launcher-v5';
+const CACHE_NAME = 'webtoon-launcher-v6';
 
 /** Paths that must always try the network first. */
 function isNetworkFirst(url) {
